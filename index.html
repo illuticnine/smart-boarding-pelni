@@ -1,0 +1,3089 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
+<title>SMART-Boarding v2.0 — Pelni Kendari</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root{
+  --navy:#0A2342;--navy-mid:#153A6B;--blue:#1565C0;--blue-lt:#E3F0FF;
+  --green:#2E7D32;--green-lt:#E8F5E9;--red:#E53935;--red-lt:#FFEBEE;
+  --amber:#F57F17;--amber-lt:#FFF8E1;--purple:#6A1B9A;--purple-lt:#F3E5F5;
+  --teal:#00695C;--teal-lt:#E0F2F1;
+  --gray-50:#F8F9FA;--gray-100:#F1F3F5;--gray-200:#DEE2E6;
+  --gray-400:#868E96;--gray-600:#495057;--gray-800:#212529;
+  --r:12px;--rs:8px;--sh:0 2px 12px rgba(10,35,66,.10);--sh2:0 8px 32px rgba(10,35,66,.16);
+  --font:'Segoe UI',system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--gray-50);color:var(--gray-800);min-height:100vh}
+
+/* HEADER */
+.hdr{background:var(--navy);color:#fff;padding:0 16px;position:sticky;top:0;z-index:100;box-shadow:var(--sh2)}
+.hdr-in{max-width:960px;margin:0 auto;display:flex;align-items:center;gap:10px;height:54px}
+.logo{width:34px;height:34px;background:var(--red);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px}
+.hdr-title h1{font-size:15px;font-weight:700}
+.hdr-title p{font-size:10px;opacity:.6;margin-top:1px}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.ship-btn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:20px;
+  padding:4px 10px;font-size:11px;font-weight:600;color:#fff;cursor:pointer;white-space:nowrap}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#ff5252;flex-shrink:0}
+.sync-dot.ok{background:#69f0ae}
+.sync-dot.syncing{background:#ffb74d;animation:pulse 1s infinite}
+
+/* SHIP TYPE SWITCHER */
+.type-bar{background:var(--navy-mid);display:flex;padding:8px 16px;gap:8px;align-items:center}
+.type-bar-label{font-size:11px;color:rgba(255,255,255,.5);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-right:4px}
+.type-tab{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;
+  border:1.5px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);transition:all .2s}
+.type-tab.active.perintis{background:#00695C;border-color:#00695C;color:#fff}
+.type-tab.active.penumpang{background:#1565C0;border-color:#1565C0;color:#fff}
+
+/* NAV */
+.nav{background:rgba(0,0,0,.2);display:flex;overflow-x:auto;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav-tab{flex-shrink:0;padding:11px 16px;font-size:12px;font-weight:600;
+  color:rgba(255,255,255,.5);cursor:pointer;border-bottom:3px solid transparent;
+  transition:all .2s;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.nav-tab.active{color:#fff;border-bottom-color:#64B5F6}
+.nav-tab:hover:not(.active){color:rgba(255,255,255,.8)}
+
+/* MAIN */
+.main{max-width:960px;margin:0 auto;padding:18px 14px 100px}
+.page{display:none}.page.active{display:block}
+
+/* CARD */
+.card{background:#fff;border-radius:var(--r);box-shadow:var(--sh);padding:18px;margin-bottom:14px}
+.card-title{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:14px;
+  display:flex;align-items:center;gap:8px}
+.cticon{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.bg{background:var(--green-lt);color:var(--green)}
+.br{background:var(--red-lt);color:var(--red)}
+.ba{background:var(--amber-lt);color:var(--amber)}
+.bb{background:var(--blue-lt);color:var(--blue)}
+.bgr{background:var(--gray-100);color:var(--gray-600)}
+.bp{background:var(--purple-lt);color:var(--purple)}
+.bt{background:var(--teal-lt);color:var(--teal)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:11px 18px;border-radius:var(--rs);font-size:13px;font-weight:600;
+  cursor:pointer;border:none;transition:all .15s;user-select:none}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--blue);color:#fff;width:100%}
+.btn-primary:hover{background:#0D47A1}
+.btn-danger{background:var(--red);color:#fff;width:100%}
+.btn-outline{background:#fff;color:var(--blue);border:2px solid var(--blue);width:100%}
+.btn-outline:hover{background:var(--blue-lt)}
+.btn-teal{background:var(--teal);color:#fff;width:100%}
+.btn-amber{background:var(--amber);color:#fff}
+.btn-sm{padding:7px 13px;font-size:12px;width:auto}
+.btn-success{background:var(--green);color:#fff}
+.btn-success:hover{background:#1B5E20}
+.btn-gray{background:var(--gray-100);color:var(--gray-600)}
+
+/* SCAN PAGE */
+.pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.pos-btn{padding:12px 8px;border-radius:var(--rs);border:2px solid var(--gray-200);
+  background:#fff;cursor:pointer;text-align:center;transition:all .15s;
+  font-size:12px;font-weight:600;color:var(--gray-600)}
+.pos-btn.active{border-color:var(--blue);background:var(--blue-lt);color:var(--blue)}
+.pos-icon{font-size:20px;margin-bottom:3px}
+
+/* SCAN MODE SWITCHER */
+.scan-mode{display:flex;gap:8px;margin-bottom:14px}
+.mode-btn{flex:1;padding:10px;border-radius:var(--rs);border:2px solid var(--gray-200);
+  background:#fff;cursor:pointer;text-align:center;font-size:12px;font-weight:600;
+  color:var(--gray-600);transition:all .2s}
+.mode-btn.active{border-color:var(--navy);background:var(--navy);color:#fff}
+.mode-icon{font-size:18px;display:block;margin-bottom:3px}
+
+/* QR Reader */
+#qr-reader video{width:100%!important;border-radius:var(--r)}
+.scan-placeholder{display:flex;align-items:center;justify-content:center;
+  min-height:200px;background:var(--gray-100);border-radius:var(--r);
+  flex-direction:column;gap:8px;font-size:13px;color:var(--gray-400)}
+
+/* Hardware scanner input */
+.hw-scanner-box{background:var(--navy);border-radius:var(--r);padding:24px;text-align:center}
+.hw-scanner-box input{width:100%;padding:14px 16px;border-radius:var(--rs);
+  border:none;font-size:16px;font-family:monospace;text-align:center;
+  background:rgba(255,255,255,.08);color:#fff;outline:none;
+  letter-spacing:2px;}
+.hw-scanner-box input::placeholder{color:rgba(255,255,255,.3);letter-spacing:0;font-family:var(--font);font-size:13px}
+.hw-scanner-box input:focus{background:rgba(255,255,255,.15);box-shadow:0 0 0 2px rgba(100,181,246,.5)}
+.hw-label{color:rgba(255,255,255,.7);font-size:12px;margin-bottom:10px;font-weight:600}
+.hw-hint{color:rgba(255,255,255,.4);font-size:11px;margin-top:8px}
+
+/* RESULT */
+.result-box{margin-top:14px;padding:18px;border-radius:var(--r);text-align:center;animation:fadeIn .3s}
+.result-box.ok{background:var(--green-lt);border:2px solid var(--green)}
+.result-box.dup{background:var(--red-lt);border:2px solid var(--red)}
+.result-box.transit{background:var(--amber-lt);border:2px solid var(--amber)}
+.result-box.unknown{background:var(--gray-100);border:2px solid var(--gray-400)}
+.r-icon{font-size:44px;line-height:1;margin-bottom:6px}
+.r-status{font-size:20px;font-weight:800;margin-bottom:3px}
+.r-name{font-size:16px;font-weight:600;margin-bottom:2px}
+.r-info{font-size:12px;color:var(--gray-600)}
+
+/* MANUAL INPUT */
+.manual-row{display:flex;gap:8px;margin-top:10px}
+.manual-row input{flex:1;padding:11px 13px;border:1.5px solid var(--gray-200);
+  border-radius:var(--rs);font-size:13px;outline:none;transition:border-color .2s}
+.manual-row input:focus{border-color:var(--blue)}
+
+/* MANIFEST */
+.upload-zone{border:2px dashed var(--gray-200);border-radius:var(--r);
+  padding:36px 20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--gray-50)}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--blue);background:var(--blue-lt)}
+.upload-icon{font-size:36px;margin-bottom:7px}
+.upload-label{font-size:14px;font-weight:600;color:var(--navy)}
+.upload-sub{font-size:12px;color:var(--gray-400);margin-top:3px}
+input[type=file]{display:none}
+
+/* TABLE */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:var(--navy);color:#fff;padding:9px 10px;text-align:left;font-weight:600;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+tr:hover td{background:var(--gray-50)}
+.tbl-perintis th{background:var(--teal)}
+.tbl-penumpang th{background:var(--blue)}
+.sdot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px}
+.dg{background:var(--green)}.dr{background:var(--red)}.da{background:var(--amber)}.dgr{background:var(--gray-400)}
+
+/* STATS GRID */
+.stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+@media(min-width:480px){.stats-grid{grid-template-columns:repeat(4,1fr)}}
+.stat-card{background:#fff;border-radius:var(--rs);padding:14px 12px;box-shadow:var(--sh);text-align:center}
+.stat-num{font-size:26px;font-weight:800;line-height:1}
+.stat-label{font-size:11px;color:var(--gray-400);margin-top:3px;font-weight:600}
+.sc-blue .stat-num{color:var(--blue)}.sc-green .stat-num{color:var(--green)}
+.sc-red .stat-num{color:var(--red)}.sc-amber .stat-num{color:var(--amber)}
+.sc-teal .stat-num{color:var(--teal)}.sc-purple .stat-num{color:var(--purple)}
+
+/* PROGRESS */
+.prog-wrap{background:var(--gray-100);border-radius:99px;height:10px;overflow:hidden;margin:6px 0}
+.prog{height:100%;border-radius:99px;background:var(--blue);transition:width .6s cubic-bezier(.4,0,.2,1)}
+
+/* TRANSIT */
+.transit-card{padding:12px;border-radius:var(--rs);border:1.5px solid var(--gray-200);
+  margin-bottom:9px;display:flex;align-items:center;gap:10px;background:#fff}
+.t-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:16px;flex-shrink:0}
+.t-info{flex:1;min-width:0}
+.t-name{font-size:13px;font-weight:700}
+.t-detail{font-size:11px;color:var(--gray-400);margin-top:2px}
+
+/* LOG FILTER */
+.log-filter{display:flex;gap:7px;margin-bottom:10px;flex-wrap:wrap}
+.fbtn{padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;
+  border:1.5px solid var(--gray-200);background:#fff;cursor:pointer;
+  transition:all .15s;color:var(--gray-600)}
+.fbtn.active{border-color:var(--blue);background:var(--blue-lt);color:var(--blue)}
+
+/* GOOGLE SHEETS SETUP */
+.gs-step{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--gray-100)}
+.gs-step:last-child{border:none}
+.gs-num{width:28px;height:28px;border-radius:50%;background:var(--navy);color:#fff;
+  font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gs-info{flex:1}
+.gs-title{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.gs-desc{font-size:12px;color:var(--gray-600);line-height:1.6}
+.gs-input{width:100%;padding:10px 12px;border:1.5px solid var(--gray-200);
+  border-radius:var(--rs);font-size:12px;margin-top:8px;outline:none;font-family:monospace}
+.gs-input:focus{border-color:var(--blue)}
+.code-block{background:var(--gray-800);color:#a5d6a7;padding:12px 14px;border-radius:var(--rs);
+  font-size:11px;font-family:monospace;line-height:1.7;overflow-x:auto;margin-top:8px;white-space:pre}
+
+/* MODAL */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(10,35,66,.55);
+  z-index:200;align-items:center;justify-content:center;padding:16px}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:var(--r);padding:22px;width:100%;max-width:440px;animation:slideUp .25s}
+.modal h3{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:12px}
+.modal input,.modal select{width:100%;padding:10px 12px;border:1.5px solid var(--gray-200);
+  border-radius:var(--rs);font-size:13px;margin-bottom:10px;outline:none;font-family:var(--font)}
+.modal input:focus,.modal select:focus{border-color:var(--blue)}
+.modal-footer{display:flex;gap:9px;margin-top:4px}
+
+/* TOAST */
+.toast{position:fixed;bottom:74px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--gray-800);color:#fff;padding:11px 18px;border-radius:99px;
+  font-size:13px;font-weight:600;z-index:300;opacity:0;transition:all .3s;
+  white-space:nowrap;box-shadow:var(--sh2)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.success{background:var(--green)}.toast.error{background:var(--red)}
+.toast.warning{background:var(--amber)}
+
+/* EMPTY */
+.empty{text-align:center;padding:40px 20px;color:var(--gray-400)}
+.empty-icon{font-size:42px;margin-bottom:10px}
+.empty-title{font-size:15px;font-weight:600;color:var(--gray-600)}
+.empty-sub{font-size:12px;margin-top:3px}
+
+/* MISC */
+@keyframes fadeIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.divider{height:1px;background:var(--gray-100);margin:14px 0}
+.slabel{font-size:10px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px}
+.chip{display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700}
+.cf1{background:#E3F0FF;color:var(--blue)}.cf2{background:#EDE7F6;color:#5E35B1}
+.ctag-perintis{background:var(--teal-lt);color:var(--teal)}
+.ctag-penumpang{background:var(--blue-lt);color:var(--blue)}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:99px}
+
+/* PERINTIS vs PENUMPANG accent */
+body.perintis .nav{background:rgba(0,80,64,.3)}
+body.perintis .nav-tab.active{border-bottom-color:#80CBC4}
+body.penumpang .nav{background:rgba(0,40,100,.3)}
+
+/* Info box */
+.info-box{padding:12px 14px;border-radius:var(--rs);font-size:12px;line-height:1.7;margin-top:10px}
+.info-box.teal{background:var(--teal-lt);color:var(--teal)}
+.info-box.blue{background:var(--blue-lt);color:var(--blue)}
+.info-box b{font-weight:700}
+
+/* Sync status bar */
+.sync-bar{padding:8px 14px;display:flex;align-items:center;gap:8px;
+  font-size:12px;border-radius:var(--rs);margin-bottom:14px}
+.sync-bar.connected{background:var(--green-lt);color:var(--green)}
+.sync-bar.disconnected{background:var(--gray-100);color:var(--gray-600)}
+.sync-bar.syncing{background:var(--amber-lt);color:var(--amber)}
+</style>
+</head>
+<body class="perintis">
+
+<!-- ═══════════════════ LOGIN PAGE ═══════════════════ -->
+<div id="login-screen" style="
+  position:fixed;inset:0;z-index:9999;
+  background:linear-gradient(135deg,#0D2137 0%,#1565C0 100%);
+  display:flex;align-items:center;justify-content:center;
+  font-family:inherit;
+">
+  <div style="width:100%;max-width:380px;padding:24px">
+
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="font-size:52px;margin-bottom:8px">🚢</div>
+      <div style="color:#fff;font-size:20px;font-weight:700">SMART-Boarding</div>
+      <div style="color:rgba(255,255,255,.6);font-size:12px;margin-top:4px">
+        Sistem Mobile Anti-Rangkap Tiket · PT PELNI Kendari
+      </div>
+    </div>
+
+    <!-- Card Login -->
+    <div style="background:#fff;border-radius:16px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+
+      <div style="font-size:14px;font-weight:700;color:#1565C0;margin-bottom:16px;text-align:center">
+        Pilih Role & Masukkan PIN
+      </div>
+
+      <!-- Role selector -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px" id="role-selector">
+        <div class="role-btn" onclick="selectRole('admin')" id="role-admin">
+          <div style="font-size:22px">👨‍💼</div>
+          <div style="font-size:11px;font-weight:700;margin-top:4px">Admin</div>
+        </div>
+        <div class="role-btn" onclick="selectRole('f1')" id="role-f1">
+          <div style="font-size:22px">🚧</div>
+          <div style="font-size:11px;font-weight:700;margin-top:4px">Petugas F1</div>
+          <div style="font-size:9px;opacity:.7">Trestle</div>
+        </div>
+        <div class="role-btn" onclick="selectRole('f2')" id="role-f2">
+          <div style="font-size:22px">🚢</div>
+          <div style="font-size:11px;font-weight:700;margin-top:4px">Petugas F2</div>
+          <div style="font-size:9px;opacity:.7">Tangga Kapal</div>
+        </div>
+      </div>
+
+      <!-- PIN input -->
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:6px">
+          PIN Akses
+        </label>
+        <input type="password" id="pin-input" placeholder="Masukkan PIN"
+          inputmode="numeric" maxlength="6"
+          style="width:100%;box-sizing:border-box;padding:12px 14px;
+                 border:2px solid #e0e0e0;border-radius:8px;
+                 font-size:18px;text-align:center;letter-spacing:6px;
+                 outline:none;transition:border .2s"
+          onkeydown="if(event.key==='Enter') doLogin()"
+          oninput="document.getElementById('login-err').textContent=''"
+          onfocus="this.style.borderColor='#1565C0'"
+          onblur="this.style.borderColor='#e0e0e0'"/>
+        <div id="login-err" style="color:#c62828;font-size:11px;margin-top:6px;text-align:center;min-height:16px"></div>
+      </div>
+
+      <button onclick="doLogin()" style="
+        width:100%;padding:13px;border:none;border-radius:8px;
+        background:#1565C0;color:#fff;font-size:14px;font-weight:700;
+        cursor:pointer;transition:background .2s
+      " onmouseover="this.style.background='#0D47A1'"
+         onmouseout="this.style.background='#1565C0'">
+        Masuk →
+      </button>
+
+      <div style="text-align:center;margin-top:14px;font-size:10px;color:#aaa">
+        Hubungi Admin jika lupa PIN
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- HEADER -->
+<header class="hdr">
+  <div class="hdr-in">
+    <div class="logo">🚢</div>
+    <div class="hdr-title">
+      <h1>SMART-Boarding v2.0</h1>
+      <p>Sistem Mobile Anti-Rangkap Tiket · PT PELNI Cabang Kendari</p>
+    </div>
+    <div class="hdr-right">
+      <div class="sync-dot" id="sync-dot" title="Status Google Sheets"></div>
+      <div id="role-badge-header" class="role-badge admin" onclick="confirmLogout()" title="Klik untuk logout">
+        <span id="role-badge-icon">👨‍💼</span>
+        <span id="role-badge-label">Admin</span>
+      </div>
+      <div class="ship-btn" onclick="openModal('modal-ship')" id="ship-btn-header">🚢 <span id="ship-label">Atur Kapal</span></div>
+    </div>
+  </div>
+
+  <!-- Ship Type Switcher -->
+  <div class="type-bar">
+    <span class="type-bar-label">Tipe:</span>
+    <div class="type-tab active perintis" id="type-perintis" onclick="setShipType('perintis')">⚓ Kapal Perintis</div>
+    <div class="type-tab penumpang" id="type-penumpang" onclick="setShipType('penumpang')">🛳 Kapal Penumpang</div>
+  </div>
+
+  <!-- Nav Tabs -->
+  <nav class="nav">
+    <div class="nav-tab active" onclick="showPage('scan')" id="tab-scan">📷 Scan</div>
+    <div class="nav-tab" onclick="showPage('manifest')" id="tab-manifest">📋 Manifes</div>
+    <div class="nav-tab" onclick="showPage('dashboard')" id="tab-dashboard">📊 Dashboard</div>
+    <div class="nav-tab" onclick="showPage('transit')" id="tab-transit" style="display:none">🔄 Transit</div>
+    <div class="nav-tab" onclick="showPage('log')" id="tab-log">📜 Log</div>
+    <div class="nav-tab" onclick="showPage('gsheets')" id="tab-gsheets">☁️ Google Sheets</div>
+  </nav>
+</header>
+
+<div class="main">
+
+<!-- ═══════════════════ SCAN PAGE ═══════════════════ -->
+<div class="page active" id="page-scan">
+
+  <!-- POS -->
+  <div class="pos-grid">
+    <div class="pos-btn active" id="pos-f1" onclick="setPos('F1')">
+      <div class="pos-icon">🚪</div>
+      <div>Filter 1</div>
+      <div style="font-size:10px;font-weight:400;color:var(--gray-400);margin-top:2px">Gerbang Trestle</div>
+    </div>
+    <div class="pos-btn" id="pos-f2" onclick="setPos('F2')">
+      <div class="pos-icon">⛵</div>
+      <div>Filter 2</div>
+      <div style="font-size:10px;font-weight:400;color:var(--gray-400);margin-top:2px">Tangga Kapal</div>
+    </div>
+  </div>
+
+  <!-- SCAN MODE SWITCHER -->
+  <div class="scan-mode">
+    <div class="mode-btn active" id="mode-camera" onclick="setScanMode('camera')">
+      <span class="mode-icon">📷</span>Kamera HP
+    </div>
+    <div class="mode-btn" id="mode-hardware" onclick="setScanMode('hardware')">
+      <span class="mode-icon">🔫</span>Alat Scanner
+    </div>
+    <div class="mode-btn" id="mode-manual" onclick="setScanMode('manual')">
+      <span class="mode-icon">⌨️</span>Manual
+    </div>
+  </div>
+
+  <!-- CAMERA MODE -->
+  <div class="card" id="scan-camera-card">
+    <div class="card-title"><div class="cticon" style="background:#E3F0FF">📷</div>Scan via Kamera HP</div>
+    <div id="scan-placeholder" class="scan-placeholder">
+      <span style="font-size:36px">📷</span>
+      <span>Tekan tombol untuk mulai scan</span>
+    </div>
+    <div id="qr-reader" style="display:none"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px">
+      <button class="btn btn-primary" id="btn-start" onclick="startCameraScan()">▶ Mulai Scan</button>
+      <button class="btn btn-outline" id="btn-stop" onclick="stopCameraScan()" style="display:none">⏹ Stop</button>
+    </div>
+  </div>
+
+  <!-- HARDWARE SCANNER MODE -->
+  <div class="card" id="scan-hardware-card" style="display:none">
+    <div class="card-title"><div class="cticon" style="background:#E8F5E9">🔫</div>Scan via Alat Scanner (USB/Bluetooth)</div>
+    <div class="hw-scanner-box">
+      <div class="hw-label">📡 Arahkan scanner ke QR Code boarding pass</div>
+      <input type="text" id="hw-input" placeholder="Menunggu input dari alat scanner..." 
+             autocomplete="off" autocorrect="off" spellcheck="false"
+             onkeydown="hwKeyDown(event)" oninput="hwInput(event)"/>
+      <div class="hw-hint">Alat scanner akan otomatis mengirim data dan menekan Enter · Klik kotak ini untuk fokus</div>
+    </div>
+    <div style="display:flex;gap:9px;margin-top:11px">
+      <button class="btn btn-primary" onclick="focusHwInput()">🎯 Fokus Input Scanner</button>
+      <button class="btn btn-gray btn-sm" onclick="clearHwInput()">🗑 Bersihkan</button>
+    </div>
+    <div class="info-box teal" style="margin-top:10px">
+      <b>Cara penggunaan alat scanner fisik:</b><br>
+      1. Hubungkan scanner USB OTG ke HP / laptop<br>
+      2. Tekan <b>"Fokus Input Scanner"</b> sekali<br>
+      3. Scan boarding pass — data masuk otomatis<br>
+      4. Scanner Bluetooth: pastikan sudah dipasangkan (paired)
+    </div>
+  </div>
+
+  <!-- MANUAL MODE -->
+  <div class="card" id="scan-manual-card" style="display:none">
+    <div class="card-title"><div class="cticon" style="background:#FFF8E1">⌨️</div>Input Manual No. Tiket</div>
+    <div class="slabel">Masukkan nomor tiket</div>
+    <div class="manual-row">
+      <input type="text" id="manual-ticket" placeholder="Contoh: C2087155092025102720260610154503"
+             onkeydown="if(event.key==='Enter')manualCheck()" style="font-family:monospace;font-size:13px"/>
+      <button class="btn btn-primary btn-sm" onclick="manualCheck()">Cek ✓</button>
+    </div>
+  </div>
+
+  <!-- RESULT -->
+  <div id="result-box" style="display:none"></div>
+
+</div>
+
+<!-- ═══════════════════ MANIFEST PAGE ═══════════════════ -->
+<div class="page" id="page-manifest">
+
+  <!-- Upload Card -->
+  <div class="card">
+    <div class="card-title">
+      <div class="cticon" style="background:#E8F5E9">📁</div>
+      Upload Manifes — <span id="manifest-type-label" class="chip ctag-perintis" style="margin-left:4px">Kapal Perintis</span>
+    </div>
+
+    <!-- OPSI 1: Muat dari Google Sheets -->
+    <div id="load-from-sheets-box" style="margin-bottom:14px">
+
+      <!-- Info status manifes saat ini -->
+      <div id="manifes-status-card" style="display:none;
+           padding:12px 14px;border-radius:10px;margin-bottom:12px;
+           background:#E3F2FD;border:1.5px solid #90CAF9">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#1565C0">
+              ☁️ Manifes Aktif
+            </div>
+            <div id="manifes-status-detail"
+                 style="font-size:11px;color:#1976D2;margin-top:2px;line-height:1.6">
+              —
+            </div>
+          </div>
+          <button class="btn btn-sm" id="btn-perbarui"
+                  onclick="perbaruiManifes()"
+                  style="background:#1565C0;color:#fff;white-space:nowrap;flex-shrink:0">
+            🔄 Perbarui Data
+          </button>
+        </div>
+        <!-- Progress bar saat loading -->
+        <div id="manifes-progress" style="display:none;margin-top:10px">
+          <div style="height:4px;background:#BBDEFB;border-radius:2px;overflow:hidden">
+            <div id="manifes-progress-bar"
+                 style="height:100%;background:#1565C0;width:0%;transition:width .4s;border-radius:2px">
+            </div>
+          </div>
+          <div id="manifes-progress-label"
+               style="font-size:10px;color:#1976D2;margin-top:4px;text-align:center">
+            Menghubungi Google Sheets...
+          </div>
+        </div>
+      </div>
+
+      <!-- Muat pertama kali (hanya tampil jika belum ada manifes) -->
+      <div id="manifes-empty-box">
+        <div class="slabel">☁️ Muat Manifes dari Google Sheets</div>
+        <div style="font-size:11px;color:var(--gray-500);margin-bottom:8px;line-height:1.6">
+          Jika Admin sudah upload manifes ke Google Sheets, petugas dapat memuat langsung dari sini.
+          Pastikan URL Google Sheets sudah diisi di menu <b>☁️ Google Sheets</b>.
+        </div>
+        <button class="btn btn-primary" id="btn-load-sheets" onclick="loadManifesFromSheets()">
+          ☁️ Muat Manifes dari Google Sheets
+        </button>
+        <div id="load-sheets-status" style="margin-top:8px;font-size:11px;color:var(--gray-500)"></div>
+      </div>
+
+    </div>
+
+    <div class="divider" style="margin:14px 0">
+      <span style="background:#fff;padding:0 10px;color:var(--gray-400);font-size:11px">atau upload file langsung</span>
+    </div>
+
+    <!-- OPSI 2: Upload file -->
+    <div class="slabel">📂 Upload File Manifes</div>
+    <label for="file-input">
+      <div class="upload-zone" id="upload-zone">
+        <div class="upload-icon" id="upload-icon">📂</div>
+        <div class="upload-label" id="upload-label">Pilih file Excel, CSV, atau PDF</div>
+        <div class="upload-sub" id="upload-sub">Drag & drop di sini · Klik untuk pilih file</div>
+      </div>
+    </label>
+    <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.pdf" onchange="handleUpload(event)"/>
+
+    <!-- Perintis format info -->
+    <div id="format-perintis" class="info-box teal">
+      <b>📊 Format Manifes Kapal Perintis (PPSS Export Excel):</b><br>
+      Nama Kapal · No Tiket · Pel. Awal · Pel. Tujuan · Tgl Etd · Nama Pnp · Jen. Kelamin · Kategori<br>
+      <span style="opacity:.8">Upload file .xlsx hasil export PPSS · Header data mulai baris ke-10</span>
+    </div>
+
+    <!-- Penumpang format info -->
+    <div id="format-penumpang" class="info-box blue" style="display:none">
+      <b>Format Manifes Kapal Penumpang — pilih salah satu:</b><br><br>
+      <b>📄 PDF</b> — "Daftar Penumpang Regulasi" export dari PPSS<br>
+      <span style="margin-left:14px;opacity:.85;font-size:11px">Parser otomatis membaca semua halaman: Kelas · Asal · Tujuan · No Tiket · Nama · Kategori · Umur</span><br><br>
+      <b>📊 Excel / CSV</b> — kolom bebas, minimal:<br>
+      <span style="margin-left:14px;opacity:.85;font-size:11px">NO_TIKET (wajib) · NAMA (wajib) · KELAS · TUJUAN · UMUR_TAHUN · KATEGORI</span>
+    </div>
+
+    <!-- PDF parse progress -->
+    <div id="pdf-progress" style="display:none;margin-top:12px;padding:14px;background:var(--blue-lt);border-radius:var(--rs);border:1.5px solid var(--blue)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:22px" class="pulse">⏳</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;color:var(--blue)" id="pdf-progress-text">Membaca PDF...</div>
+          <div style="font-size:11px;color:var(--gray-600)" id="pdf-progress-sub">Mengekstrak data penumpang dari semua halaman</div>
+        </div>
+      </div>
+      <div class="prog-wrap" style="margin-top:8px"><div class="prog" id="pdf-prog-bar" style="width:0%;background:var(--blue)"></div></div>
+    </div>
+
+    <!-- Summary -->
+    <div id="manifest-summary" style="display:none;margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <span class="slabel" style="margin:0">Manifes Dimuat</span>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="btn-summary-perbarui"
+                  onclick="perbaruiManifes()"
+                  style="background:#1565C0;color:#fff;display:none">
+            🔄 Perbarui
+          </button>
+          <button class="btn btn-sm btn-gray" onclick="clearManifest()">🗑 Hapus</button>
+          <button class="btn btn-sm btn-success" onclick="exportLog()">⬇ Export Log</button>
+        </div>
+      </div>
+      <div id="manifes-loaded-time"
+           style="font-size:10px;color:var(--gray-400);margin-bottom:10px;display:none">
+        📅 Dimuat: — &nbsp;|&nbsp; 🕐 —
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-card sc-blue"><div class="stat-num" id="m-total">0</div><div class="stat-label">Total</div></div>
+        <div class="stat-card sc-green"><div class="stat-num" id="m-boarded">0</div><div class="stat-label">Naik</div></div>
+        <div class="stat-card sc-amber"><div class="stat-num" id="m-pending">0</div><div class="stat-label">Belum</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table Card -->
+  <div class="card" id="manifest-table-card" style="display:none">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+      <div class="card-title" style="margin:0;flex:1">
+        <div class="cticon" style="background:#FFF8E1">📋</div>Daftar Penumpang
+      </div>
+      <input type="search" placeholder="Cari..." id="search-manifest"
+        style="padding:7px 11px;border:1.5px solid var(--gray-200);border-radius:var(--rs);
+        font-size:12px;outline:none;width:140px" oninput="renderManifestTable()"/>
+    </div>
+
+    <!-- PERINTIS TABLE -->
+    <div id="tbl-perintis-wrap" class="tbl-wrap">
+      <table class="tbl-perintis">
+        <thead><tr>
+          <th>#</th><th>No Tiket</th><th>Nama Penumpang</th>
+          <th>Asal</th><th>Tujuan</th><th>Tgl ETD</th>
+          <th>Kel.</th><th>Kategori</th><th>Status</th><th>Pos</th>
+        </tr></thead>
+        <tbody id="tbody-perintis"></tbody>
+      </table>
+    </div>
+
+    <!-- PENUMPANG TABLE -->
+    <div id="tbl-penumpang-wrap" class="tbl-wrap" style="display:none">
+      <table class="tbl-penumpang">
+        <thead><tr>
+          <th>#</th><th>No Tiket</th><th>Nama Penumpang</th>
+          <th>Kelas</th><th>Asal</th><th>Tujuan</th>
+          <th>Kategori</th><th>Umur (Th)</th><th>Status</th><th>Pos</th>
+        </tr></thead>
+        <tbody id="tbody-penumpang"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
+<div class="page" id="page-dashboard">
+
+  <div class="card" style="background:linear-gradient(135deg,var(--navy),var(--navy-mid));color:#fff;padding:20px">
+    <div style="font-size:10px;opacity:.55;font-weight:700;letter-spacing:1px;text-transform:uppercase">Keberangkatan Aktif</div>
+    <div id="dash-ship" style="font-size:19px;font-weight:800;margin-top:4px">Belum Diatur</div>
+    <div id="dash-route" style="font-size:12px;opacity:.65;margin-top:2px">—</div>
+    <div style="display:flex;gap:18px;margin-top:14px">
+      <div><div style="font-size:10px;opacity:.55">Berangkat</div><div id="dash-time" style="font-size:14px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;opacity:.55">Sekarang</div><div id="live-clock" style="font-size:14px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;opacity:.55">Tipe</div><div id="dash-type" style="font-size:14px;font-weight:700">Perintis</div></div>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card sc-blue"><div class="stat-num" id="d-total">0</div><div class="stat-label">Total Pnp</div></div>
+    <div class="stat-card sc-green"><div class="stat-num" id="d-naik">0</div><div class="stat-label">Sudah Naik</div></div>
+    <div class="stat-card sc-red"><div class="stat-num" id="d-dup">0</div><div class="stat-label">Alert Duplikat</div></div>
+    <div class="stat-card sc-amber"><div class="stat-num" id="d-transit">0</div><div class="stat-label">Transit Aktif</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><div class="cticon" style="background:#E8F5E9">📈</div>Progress Embarkasi</div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray-600);margin-bottom:5px">
+      <span>Penumpang naik ke kapal</span>
+      <span id="prog-pct" style="font-weight:700;color:var(--blue)">0%</span>
+    </div>
+    <div class="prog-wrap"><div class="prog" id="prog-bar" style="width:0%"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-400);margin-top:5px">
+      <span id="d-f1">Filter 1: 0 scan valid</span>
+      <span id="d-f2">Filter 2: 0 scan valid</span>
+    </div>
+  </div>
+
+  <!-- Kategori breakdown (perintis) -->
+  <div class="card" id="dash-kategori" style="display:none">
+    <div class="card-title"><div class="cticon" style="background:#E0F2F1">👥</div>Breakdown Kategori</div>
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card sc-blue"><div class="stat-num" id="d-dws">0</div><div class="stat-label">Dewasa</div></div>
+      <div class="stat-card sc-teal"><div class="stat-num" id="d-anak">0</div><div class="stat-label">Anak</div></div>
+      <div class="stat-card sc-purple"><div class="stat-num" id="d-bayi">0</div><div class="stat-label">Bayi</div></div>
+    </div>
+  </div>
+
+  <!-- Alerts -->
+  <div class="card">
+    <div class="card-title"><div class="cticon" style="background:#FFEBEE">🚨</div>Alert Duplikat Terakhir</div>
+    <div id="alert-list">
+      <div class="empty"><div class="empty-icon">✅</div><div class="empty-title">Tidak ada alert</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ TRANSIT PAGE ═══════════════════ -->
+<div class="page" id="page-transit">
+
+  <!-- Scanner Card -->
+  <div class="card">
+    <div class="card-title"><div class="cticon" style="background:#FFF8E1">🔫</div>Scanner Pintu Trestle — Penumpang Lanjutan</div>
+    <p style="font-size:12px;color:var(--gray-600);margin-bottom:12px">
+      Scan boarding pass di pintu trestle. Scan <b>pertama</b> = penumpang keluar ke terminal. Scan <b>kedua</b> = penumpang kembali ke dermaga.
+    </p>
+
+    <!-- Mode toggle: hardware scanner / kamera -->
+    <div class="scan-mode" style="margin-bottom:12px">
+      <div class="mode-btn active" id="tr-mode-hw" onclick="setTransitMode('hardware')">
+        <span class="mode-icon">🔫</span>Alat Scanner
+      </div>
+      <div class="mode-btn" id="tr-mode-cam" onclick="setTransitMode('camera')">
+        <span class="mode-icon">📷</span>Kamera HP
+      </div>
+    </div>
+
+    <!-- Hardware scanner input -->
+    <div id="tr-hw-box">
+      <div class="hw-scanner-box">
+        <div class="hw-label">📡 Arahkan scanner ke boarding pass penumpang transit</div>
+        <input type="text" id="tr-hw-input" placeholder="Menunggu input scanner..."
+               autocomplete="off" autocorrect="off" spellcheck="false"
+               onkeydown="trHwKeyDown(event)" oninput="trHwInput(event)"/>
+        <div class="hw-hint">Scanner USB/Bluetooth akan otomatis mengirim data · Klik kotak ini untuk fokus</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-primary" onclick="focusTrHw()">🎯 Fokus Scanner Transit</button>
+        <button class="btn btn-gray btn-sm" onclick="document.getElementById('tr-hw-input').value=''">🗑 Bersihkan</button>
+      </div>
+    </div>
+
+    <!-- Kamera scanner -->
+    <div id="tr-cam-box" style="display:none">
+      <div id="tr-qr-reader" style="display:none"></div>
+      <div class="scan-placeholder" id="tr-cam-placeholder">
+        <span style="font-size:36px">📷</span>
+        <span>Tekan tombol untuk mulai scan transit</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px">
+        <button class="btn btn-primary" id="tr-btn-start" onclick="startTransitCam()">▶ Mulai Scan</button>
+        <button class="btn btn-outline" id="tr-btn-stop" onclick="stopTransitCam()" style="display:none">⏹ Stop</button>
+      </div>
+    </div>
+
+    <!-- Input manual -->
+    <div class="divider"></div>
+    <div class="slabel">Atau input nomor tiket manual</div>
+    <div class="manual-row">
+      <input type="text" id="tr-manual-input" placeholder="Nomor tiket penumpang transit"
+             onkeydown="if(event.key==='Enter')processTransitTicket(this.value.trim())"
+             style="font-family:monospace;font-size:13px"/>
+      <button class="btn btn-amber btn-sm" style="color:#fff"
+              onclick="processTransitTicket(document.getElementById('tr-manual-input').value.trim())">Scan</button>
+    </div>
+  </div>
+
+  <!-- Hasil scan transit -->
+  <div id="tr-result-box" style="display:none"></div>
+
+  <!-- Statistik -->
+  <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat-card sc-amber">
+      <div class="stat-num" id="tr-count-out">0</div>
+      <div class="stat-label">Di Terminal</div>
+    </div>
+    <div class="stat-card sc-green">
+      <div class="stat-num" id="tr-count-back">0</div>
+      <div class="stat-label">Kembali</div>
+    </div>
+    <div class="stat-card sc-blue">
+      <div class="stat-num" id="tr-count-total">0</div>
+      <div class="stat-label">Total Transit</div>
+    </div>
+  </div>
+
+  <!-- Sync status -->
+  <div id="tr-sync-bar" class="sync-bar disconnected" style="margin-bottom:14px">
+    <div class="sync-dot" id="tr-sync-dot"></div>
+    <span id="tr-sync-text">Sync Google Sheets: belum terhubung</span>
+    <button class="btn btn-sm btn-success" style="margin-left:auto;padding:4px 10px" onclick="syncTransitNow()">🔄 Sync</button>
+  </div>
+
+  <!-- Daftar transit -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" style="margin:0">
+        <div class="cticon" style="background:#FFF8E1">📋</div>Daftar Penumpang Transit
+      </div>
+      <button class="btn btn-sm" style="background:var(--red-lt);color:var(--red)" onclick="clearTransitLog()">🗑 Hapus Log</button>
+    </div>
+    <div class="log-filter">
+      <div class="fbtn active" id="tr-filter-all" onclick="setTransitFilter('all',this)">Semua</div>
+      <div class="fbtn" id="tr-filter-out" onclick="setTransitFilter('out',this)">🚶 Di Terminal</div>
+      <div class="fbtn" id="tr-filter-back" onclick="setTransitFilter('back',this)">✅ Kembali</div>
+    </div>
+    <div id="transit-list">
+      <div class="empty"><div class="empty-icon">🔄</div><div class="empty-title">Belum ada penumpang transit</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ LOG PAGE ═══════════════════ -->
+<div class="page" id="page-log">
+  <div class="card">
+    <div class="card-title"><div class="cticon" style="background:#F3E5F5">📜</div>Riwayat Scan</div>
+    <div class="log-filter">
+      <div class="fbtn active" onclick="filterLog('all',this)">Semua</div>
+      <div class="fbtn" onclick="filterLog('OK',this)">✅ F1 Lolos</div>
+      <div class="fbtn" onclick="filterLog('NAIK',this)">🚢 Naik Kapal</div>
+      <div class="fbtn" onclick="filterLog('DUPLIKAT',this)">🔴 Duplikat</div>
+      <div class="fbtn" onclick="filterLog('TRANSIT',this)">🟡 Transit</div>
+      <div class="fbtn" onclick="filterLog('PERHATIAN',this)">⚠️ Perhatian</div>
+      <div class="fbtn" onclick="filterLog('TIDAK DIKENAL',this)">⚪ Tdk Dikenal</div>
+    </div>
+    <div style="display:flex;gap:7px;margin-bottom:12px">
+      <button class="btn btn-sm btn-success" onclick="exportLog()" style="flex:1">⬇ Export CSV</button>
+      <button class="btn btn-sm" style="background:var(--red-lt);color:var(--red);flex:1" onclick="clearLog()">🗑 Hapus</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Waktu</th><th>No Tiket</th><th>Nama</th><th>Pos</th><th>Status</th></tr></thead>
+        <tbody id="log-tbody"></tbody>
+      </table>
+    </div>
+    <div id="log-empty" class="empty" style="display:none">
+      <div class="empty-icon">📜</div><div class="empty-title">Belum ada riwayat scan</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ GOOGLE SHEETS PAGE ═══════════════════ -->
+<div class="page" id="page-gsheets">
+
+  <!-- Status Bar -->
+  <div class="sync-bar disconnected" id="gs-status-bar">
+    <div class="sync-dot" id="gs-dot"></div>
+    <span id="gs-status-text">Belum terhubung ke Google Sheets</span>
+  </div>
+
+  <!-- Connected panel -->
+  <div id="gs-connected-panel" style="display:none">
+    <div class="card" style="background:var(--green-lt);border:1.5px solid var(--green)">
+      <div class="card-title" style="color:var(--green)"><div class="cticon" style="background:#fff">✅</div>Terhubung ke Google Sheets</div>
+      <div style="font-size:12px;color:var(--green);margin-bottom:10px" id="gs-sheet-name-display">—</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn btn-sm btn-success" onclick="syncNow()">🔄 Sync Sekarang</button>
+        <button class="btn btn-sm btn-gray" onclick="disconnectGS()">✖ Putus Koneksi</button>
+      </div>
+      <div style="font-size:11px;color:var(--green);margin-top:8px" id="gs-last-sync">Belum pernah sync</div>
+    </div>
+  </div>
+
+  <!-- Setup Guide -->
+  <div class="card" id="gs-setup-panel">
+    <div class="card-title"><div class="cticon" style="background:#E8F5E9">☁️</div>Hubungkan ke Google Sheets</div>
+    <p style="font-size:12px;color:var(--gray-600);margin-bottom:14px;line-height:1.7">
+      Web app ini menggunakan <b>Google Apps Script</b> sebagai jembatan antara aplikasi dan Google Sheets Anda.
+      Ikuti langkah di bawah sekali saja — setelah itu data scan akan otomatis tersinkronisasi.
+    </p>
+
+    <div class="gs-step">
+      <div class="gs-num">1</div>
+      <div class="gs-info">
+        <div class="gs-title">Buka Google Sheets baru</div>
+        <div class="gs-desc">
+          Buka <a href="https://sheets.google.com" target="_blank" style="color:var(--blue)">sheets.google.com</a> → buat spreadsheet baru → beri nama misalnya <b>"SMART-Boarding Log"</b>.
+          Buat 3 sheet tab: <b>ScanLog</b>, <b>Manifes</b>, <b>TransitLog</b>.
+        </div>
+      </div>
+    </div>
+
+    <div class="gs-step">
+      <div class="gs-num">2</div>
+      <div class="gs-info">
+        <div class="gs-title">Buat Google Apps Script</div>
+        <div class="gs-desc">Di Google Sheets: klik menu <b>Extensions → Apps Script</b>. Hapus semua kode yang ada, paste kode berikut:</div>
+        <div class="code-block">// ── SMART-Boarding Apps Script ──
+// Tempel kode ini ke Extensions → Apps Script, lalu Deploy sebagai Web App
+// Execute as: Me | Who has access: Anyone
+
+const SS = SpreadsheetApp.getActiveSpreadsheet();
+
+// Fungsi pembantu: buat response dengan header CORS
+function makeResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// doGet: tes koneksi & handle preflight OPTIONS
+function doGet(e) {
+  const action = e.parameter.action || '';
+
+  // Tes koneksi
+  if (!action || action === 'ping') {
+    return makeResponse({ ok: true, msg: 'SMART-Boarding API aktif', ts: new Date().toISOString() });
+  }
+
+  // Ambil data manifes (untuk load dari perangkat petugas)
+  if (action === 'getManifes') {
+    const sh = SS.getSheetByName('Manifes');
+    if (!sh || sh.getLastRow() < 2) {
+      return makeResponse({ ok: false, msg: 'Sheet Manifes kosong', rows: [] });
+    }
+    return makeResponse({ ok: true, rows });
+  }
+
+  return makeResponse({ ok: false, msg: 'Action tidak dikenal' });
+}
+
+// doPost: terima data dari web app
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+
+    if (data.action === 'addLog') {
+      const sh = getOrCreateSheet('ScanLog',
+        ['Waktu','No Tiket','Nama','Pos','Status','Info','Tipe Kapal','Nama Kapal','Voyage']);
+      sh.appendRow([
+        data.time, data.ticket, data.name, data.pos,
+        data.status, data.info || '', data.shipType || '',
+        data.shipName || '', data.voyage || ''
+      ]);
+    }
+
+    if (data.action === 'addTransit') {
+      const sh = getOrCreateSheet('TransitLog',
+        ['No Tiket','Nama','Waktu Keluar','Waktu Kembali','Durasi','Status','Timestamp']);
+      
+      if (data.status === 'kembali') {
+        // Cari baris keluar yang sudah ada, update status & waktu kembali
+        const vals = sh.getDataRange().getValues();
+        let updated = false;
+        for (let i = vals.length - 1; i >= 1; i--) {
+          if (String(vals[i][0]).trim() === String(data.ticket).trim() 
+              && vals[i][5] === 'keluar') {
+            let durasi = '';
+            try {
+              const [oh,om,os] = String(vals[i][2]).split(':').map(Number);
+              const [rh,rm,rs] = String(data.returnTime).split(':').map(Number);
+              const diffSec = (rh*3600+rm*60+rs) - (oh*3600+om*60+os);
+              if (diffSec >= 0) {
+                const m = Math.floor(diffSec/60);
+                const s = diffSec % 60;
+                durasi = m > 0 ? m+'m '+s+'d' : s+'d';
+              }
+            } catch(err) {}
+            sh.getRange(i+1, 4).setValue(data.returnTime || '');
+            sh.getRange(i+1, 5).setValue(durasi);
+            sh.getRange(i+1, 6).setValue('kembali');
+            sh.getRange(i+1, 7).setValue(new Date().toLocaleTimeString());
+            updated = true;
+            break;
+          }
+        }
+        if (!updated) {
+          sh.appendRow([data.ticket, data.name, data.outTime||'',
+            data.returnTime||'', '', 'kembali', new Date().toLocaleTimeString()]);
+        }
+      } else {
+        // Keluar: tambah baris baru
+        sh.appendRow([data.ticket, data.name, data.outTime||'',
+          '', '', 'keluar', new Date().toLocaleTimeString()]);
+      }
+    }
+    
+        if (data.action === 'addLanjutan') {
+      const sh = getOrCreateSheet('PenumpangLanjutan',
+        ['No Tiket','Waktu','Tanggal','Kapal','No Voyage','Timestamp']);
+      sh.appendRow([
+        data.ticket, data.waktu || '', data.tanggal || '',
+        data.kapal || '', data.voyage || '',
+        new Date().toLocaleTimeString()
+      ]);
+    }
+
+    if (data.action === 'uploadManifes') {
+      const sh = getOrCreateSheet('Manifes', data.headers);
+      // Hapus data lama (baris 2 ke bawah), jaga header
+      const last = sh.getLastRow();
+      if (last > 1) sh.deleteRows(2, last - 1);
+      data.rows.forEach(r => sh.appendRow(r));
+    }
+
+    if (data.action === 'updateStatus') {
+      // Update status penumpang di sheet Manifes
+      const sh = SS.getSheetByName('Manifes');
+      if (sh) {
+        const vals = sh.getDataRange().getValues();
+        const headerRow = vals[0];
+        const ticketCol = headerRow.findIndex(h =>
+          String(h).toLowerCase().includes('tiket'));
+        const statusCol = headerRow.findIndex(h =>
+          String(h).toLowerCase() === 'status');
+        if (ticketCol >= 0 && statusCol >= 0) {
+          for (let i = 1; i < vals.length; i++) {
+            if (String(vals[i][ticketCol]).trim() === String(data.ticket).trim()) {
+              sh.getRange(i + 1, statusCol + 1).setValue(data.status);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    return makeResponse({ ok: true });
+  } catch (err) {
+    return makeResponse({ ok: false, error: err.message });
+  }
+}
+
+// Buat sheet baru dengan header jika belum ada
+function getOrCreateSheet(name, headers) {
+  let sh = SS.getSheetByName(name);
+  if (!sh) {
+    sh = SS.insertSheet(name);
+    sh.appendRow(headers);
+    sh.getRange(1, 1, 1, headers.length)
+      .setBackground('#0A2342')
+      .setFontColor('#FFFFFF')
+      .setFontWeight('bold');
+  }
+  return sh;
+}</div>
+      </div>
+    </div>
+
+    <div class="gs-step">
+      <div class="gs-num">3</div>
+      <div class="gs-info">
+        <div class="gs-title">Deploy sebagai Web App</div>
+        <div class="gs-desc">
+          Di Apps Script: klik <b>Deploy → New deployment</b> → pilih type <b>Web app</b>.<br>
+          ⚠️ <b>Wajib diatur persis seperti ini:</b><br>
+          • <b>Execute as</b> → <i>Me (email Anda)</i><br>
+          • <b>Who has access</b> → <i>Anyone</i> (bukan "Anyone with Google account")<br><br>
+          Klik <b>Deploy</b> → klik <b>Authorize access</b> → pilih akun Google Anda → klik <b>Allow</b>.<br>
+          Copy URL yang muncul (format: <code>https://script.google.com/macros/s/AKfy.../exec</code>)<br><br>
+          ⚠️ <b>Setiap ada perubahan kode</b>, Deploy ulang via <b>Deploy → Manage deployments → Edit (ikon pensil) → Version: New version → Deploy</b>.
+        </div>
+      </div>
+    </div>
+
+    <div class="gs-step">
+      <div class="gs-num">4</div>
+      <div class="gs-info">
+        <div class="gs-title">Paste URL di sini lalu hubungkan</div>
+        <div class="gs-desc">Salin URL Web App dari langkah 3 dan paste di bawah ini:</div>
+        <input type="text" class="gs-input" id="gs-url-input"
+               placeholder="https://script.google.com/macros/s/AKfy.../exec"/>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <input type="text" class="gs-input" id="gs-name-input"
+                 placeholder="Nama Google Sheet (opsional)" style="margin:0"/>
+        </div>
+        <button class="btn btn-primary" style="margin-top:10px" onclick="connectGS()">☁️ Hubungkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sync options -->
+  <div class="card">
+    <div class="card-title"><div class="cticon" style="background:#E3F0FF">⚙️</div>Pengaturan Sinkronisasi</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--gray-100)">
+      <div>
+        <div style="font-size:13px;font-weight:600">Auto-sync setiap scan</div>
+        <div style="font-size:11px;color:var(--gray-400)">Kirim data ke Sheets setiap ada scan baru</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:42px;height:24px">
+        <input type="checkbox" id="auto-sync-toggle" style="opacity:0;width:0;height:0" onchange="saveSettings()">
+        <span id="toggle-span" style="position:absolute;cursor:pointer;inset:0;background:var(--gray-200);border-radius:99px;transition:.3s"></span>
+      </label>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
+      <div>
+        <div style="font-size:13px;font-weight:600">Upload manifes ke Sheets</div>
+        <div style="font-size:11px;color:var(--gray-400)">Sinkronkan data manifes yang sudah diupload</div>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="syncManifes()">Upload ↑</button>
+    </div>
+  </div>
+
+  <!-- Troubleshooting -->
+  <div class="card">
+    <div class="card-title"><div class="cticon" style="background:#FFEBEE">🔧</div>Troubleshooting Koneksi</div>
+    <div style="font-size:12px;color:var(--gray-600);line-height:1.9">
+      <div style="margin-bottom:10px;padding:10px;background:var(--red-lt);border-radius:var(--rs);border-left:3px solid var(--red)">
+        <b style="color:var(--red)">❌ "Failed to fetch" atau error koneksi?</b><br>
+        Penyebab paling umum adalah pengaturan deploy yang salah di Apps Script.
+      </div>
+
+      <button class="btn btn-sm" style="background:var(--red-lt);color:var(--red);margin-bottom:12px" onclick="resetAppData()">🗑 Reset Semua Data Aplikasi (Clear Cache)</button>
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">Gunakan jika ada data lama yang mengganggu atau setelah update versi aplikasi.</div>
+      <b>Checklist wajib:</b>
+      <div style="margin:8px 0 0 4px">
+        ☐ &nbsp;<b>Who has access</b> diset ke <i>Anyone</i> (bukan "Anyone with Google account")<br>
+        ☐ &nbsp;Sudah klik <b>Authorize access</b> dan klik <b>Allow</b> saat pertama deploy<br>
+        ☐ &nbsp;URL yang dipakai adalah URL dari hasil Deploy, bukan URL editor Apps Script<br>
+        ☐ &nbsp;Setelah ubah kode, sudah deploy ulang dengan <b>New version</b><br>
+        ☐ &nbsp;Koneksi internet HP/laptop aktif
+      </div>
+
+      <div class="divider"></div>
+      <b>Cara tes manual URL Apps Script:</b><br>
+      Buka URL Apps Script di browser baru. Jika muncul teks JSON seperti:<br>
+      <code style="background:var(--gray-100);padding:3px 7px;border-radius:4px;font-size:11px">{"ok":true,"msg":"SMART-Boarding API aktif"}</code><br>
+      berarti Apps Script sudah berjalan benar dan URL bisa dipakai.
+
+      <div class="divider"></div>
+      <b>Kenapa pakai content-type text/plain?</b><br>
+      Google Apps Script tidak mendukung CORS preflight (OPTIONS request) yang dikirim browser saat content-type = <code>application/json</code>. Solusinya adalah mengirim data dengan header <code>text/plain</code> — Apps Script tetap bisa membaca isi JSON-nya, dan browser tidak mengirim preflight request.
+    </div>
+  </div>
+
+</div>
+</div><!-- end main -->
+
+<!-- MODAL: SHIP -->
+<div class="modal-bg" id="modal-ship">
+  <div class="modal">
+    <h3>🚢 Atur Info Kapal</h3>
+    <label style="font-size:12px;font-weight:600;color:var(--gray-600)">Nama Kapal</label>
+    <input type="text" id="inp-ship-name" placeholder="Contoh: KM. Tilongkabila"/>
+    <label style="font-size:12px;font-weight:600;color:var(--gray-600)">Rute Pelayaran</label>
+    <input type="text" id="inp-ship-route" placeholder="Contoh: Kendari → Bobong → Tikong"/>
+    <label style="font-size:12px;font-weight:600;color:var(--gray-600)">No. Voyage</label>
+    <input type="text" id="inp-ship-voyage" placeholder="Contoh: 11/2026"/>
+    <label style="font-size:12px;font-weight:600;color:var(--gray-600)">Jam Keberangkatan</label>
+    <input type="time" id="inp-ship-time"/>
+    <div class="modal-footer">
+      <button class="btn btn-gray btn-sm" style="flex:1" onclick="closeModal('modal-ship')">Batal</button>
+      <button class="btn btn-primary btn-sm" style="flex:1" onclick="saveShip()">Simpan ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal transit dihapus - diganti scanner langsung -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  KONFIGURASI DEPLOYMENT — ISI SEBELUM DEPLOY KE NETLIFY     ║
+// ╚══════════════════════════════════════════════════════════════╝
+const GS_APPS_SCRIPT_URL = '';  // ← PASTE URL APPS SCRIPT DI SINI
+const APP_VERSION = 'v2.0';
+
+// PIN PER ROLE — ganti sesuai kebutuhan sebelum deploy
+const PINS = {
+  admin : '1234',   // ← ganti PIN Admin
+  f1    : '1111',   // ← ganti PIN Petugas F1 (Trestle)
+  f2    : '2222',   // ← ganti PIN Petugas F2 (Tangga Kapal)
+};
+
+// Konfigurasi akses menu per role
+const ROLE_ACCESS = {
+  admin : ['scan','manifest','dashboard','log','gsheets'],
+  f1    : ['scan','manifest'],
+  f2    : ['scan','manifest'],
+};
+
+const ROLE_INFO = {
+  admin : { label:'Admin',         icon:'👨‍💼', badge:'admin', pos:null   },
+  f1    : { label:'Petugas F1',    icon:'🚧',   badge:'f1',    pos:'F1'  },
+  f2    : { label:'Petugas F2',    icon:'🚢',   badge:'f2',    pos:'F2'  },
+};
+
+let currentRole = null;  // null = belum login
+
+let S = {
+  shipType: 'perintis',
+  ship: { name:'', route:'', voyage:'', time:'' },
+  manifest: [],
+  scanLog: [],
+  transitLog: [],
+  lanjutanLog: [],
+  dupAlerts: [],
+  logFilter: 'all',
+  gs: { url: GS_APPS_SCRIPT_URL, name:'', connected: GS_APPS_SCRIPT_URL!=='', autoSync: GS_APPS_SCRIPT_URL!=='', lastSync:'' },
+  scanMode: 'camera',
+  currentPos: 'F1',
+  _manifesLoadedAt: null,   // ISO timestamp terakhir manifes dimuat dari Sheets
+};
+
+function loadState(){
+  try{
+    const s=localStorage.getItem('smart2');
+    if(s){
+      const saved=JSON.parse(s);
+      S={...S,...saved};
+      if(S.scanLog && S.scanLog.some(l=>!['OK','NAIK','DUPLIKAT','TRANSIT','PERHATIAN','TIDAK DIKENAL'].includes(l.status))){
+        S.scanLog=[]; S.dupAlerts=[];
+      }
+    }
+  }catch(e){}
+  // Jika URL sudah di-hardcode di konstanta, selalu override localStorage
+  if(GS_APPS_SCRIPT_URL){
+    S.gs.url = GS_APPS_SCRIPT_URL;
+    S.gs.connected = true;
+    S.gs.autoSync = true;
+  }
+}
+function saveState(){
+  try{ localStorage.setItem('smart2',JSON.stringify(S)); }catch(e){}
+}
+loadState();
+
+// ══════════════════════════════════════════
+// SHIP TYPE
+// ══════════════════════════════════════════
+function setShipType(t){
+  S.shipType = t;
+  saveState();
+  document.body.className = t;
+  document.getElementById('type-perintis').className = 'type-tab' + (t==='perintis'?' active perintis':'');
+  document.getElementById('type-penumpang').className = 'type-tab' + (t==='penumpang'?' active penumpang':'');
+  document.getElementById('manifest-type-label').textContent = t==='perintis'?'Kapal Perintis':'Kapal Penumpang';
+  document.getElementById('manifest-type-label').className = 'chip '+(t==='perintis'?'ctag-perintis':'ctag-penumpang');
+  document.getElementById('format-perintis').style.display = t==='perintis'?'block':'none';
+  document.getElementById('format-penumpang').style.display = t==='penumpang'?'block':'none';
+  document.getElementById('tbl-perintis-wrap').style.display = t==='perintis'?'block':'none';
+  document.getElementById('tbl-penumpang-wrap').style.display = t==='penumpang'?'block':'none';
+  document.getElementById('dash-kategori').style.display = t==='perintis'?'block':'none';
+  document.getElementById('dash-type').textContent = t==='perintis'?'Perintis':'Penumpang';
+  // Update file input: penumpang mendukung PDF juga
+  const fi = document.getElementById('file-input');
+  if(t==='penumpang'){
+    fi.accept='.xlsx,.xls,.csv,.pdf';
+    document.getElementById('upload-label').textContent='Pilih file PDF, Excel, atau CSV';
+    document.getElementById('upload-sub').textContent='PDF: "Daftar Penumpang Regulasi" dari PPSS · Excel/CSV juga didukung';
+    document.getElementById('upload-icon').textContent='📄';
+  } else {
+    fi.accept='.xlsx,.xls,.csv';
+    document.getElementById('upload-label').textContent='Pilih file Excel atau CSV';
+    document.getElementById('upload-sub').textContent='Format .xlsx export PPSS · Drag & drop di sini';
+    document.getElementById('upload-icon').textContent='📂';
+  }
+  renderManifestTable();
+}
+
+// ══════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════
+function showPage(id){
+  // Cek akses role
+  if(currentRole && !ROLE_ACCESS[currentRole].includes(id)){
+    showToast('Akses tidak diizinkan untuk role ini','error');
+    return;
+  }
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+id)?.classList.add('active');
+  document.getElementById('tab-'+id).classList.add('active');
+  if(id==='dashboard') updateDashboard();
+  if(id==='log') renderLog();
+  if(id==='manifest'){ renderManifestTable(); refreshLoadSheetsBtn(); updateManifesStatusUI(); }
+  if(id==='transit'){
+    renderTransitList();
+    updateTrStats();
+    updateTrSyncStatus(S.gs.connected);
+    // Auto fokus scanner
+    setTimeout(()=>{
+      if(trScanMode==='hardware') focusTrHw();
+    },300);
+  }
+  if(id==='gsheets') renderGSPage();
+}
+
+// ══════════════════════════════════════════
+// POS & SCAN MODE
+// ══════════════════════════════════════════
+function setPos(p){
+  S.currentPos = p;
+  document.getElementById('pos-f1').classList.toggle('active', p==='F1');
+  document.getElementById('pos-f2').classList.toggle('active', p==='F2');
+}
+
+function setScanMode(m){
+  S.scanMode = m;
+  ['camera','hardware','manual'].forEach(x=>{
+    document.getElementById('mode-'+x).classList.toggle('active', x===m);
+    document.getElementById('scan-'+x+'-card').style.display = x===m?'block':'none';
+  });
+  if(m!=='camera') stopCameraScan();
+  if(m==='hardware') setTimeout(focusHwInput, 300);
+}
+
+// ══════════════════════════════════════════
+// CAMERA SCANNER
+// ══════════════════════════════════════════
+let qrScanner = null;
+function startCameraScan(){
+  document.getElementById('scan-placeholder').style.display='none';
+  document.getElementById('qr-reader').style.display='block';
+  document.getElementById('btn-start').style.display='none';
+  document.getElementById('btn-stop').style.display='inline-flex';
+  qrScanner = new Html5Qrcode('qr-reader');
+  qrScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:230,height:230}},
+    (txt)=>{
+      processTicket(txt.trim());
+      qrScanner.pause(true);
+      setTimeout(()=>{ try{qrScanner.resume();}catch(e){} },2500);
+    },()=>{}
+  ).catch(err=>{
+    showToast('Kamera tidak bisa diakses','error');
+    stopCameraScan();
+  });
+}
+function stopCameraScan(){
+  if(qrScanner){ qrScanner.stop().then(()=>{ qrScanner.clear(); qrScanner=null; }).catch(()=>{}); }
+  document.getElementById('scan-placeholder').style.display='flex';
+  document.getElementById('qr-reader').style.display='none';
+  document.getElementById('btn-start').style.display='inline-flex';
+  document.getElementById('btn-stop').style.display='none';
+}
+
+// ══════════════════════════════════════════
+// HARDWARE SCANNER
+// ══════════════════════════════════════════
+let hwBuffer = '', hwTimer = null;
+function focusHwInput(){
+  document.getElementById('hw-input').focus();
+  showToast('Scanner siap — arahkan ke QR code','success');
+}
+function clearHwInput(){
+  document.getElementById('hw-input').value='';
+  hwBuffer='';
+  focusHwInput();
+}
+function hwKeyDown(e){
+  if(e.key==='Enter'){
+    const val = document.getElementById('hw-input').value.trim();
+    if(val){ processTicket(val); document.getElementById('hw-input').value=''; hwBuffer=''; }
+    e.preventDefault();
+  }
+}
+function hwInput(e){
+  // Most USB scanners emit chars rapidly then Enter — detect rapid input
+  clearTimeout(hwTimer);
+  hwTimer = setTimeout(()=>{
+    const val = document.getElementById('hw-input').value.trim();
+    // Auto-submit if looks like a ticket number (>= 10 chars, no spaces)
+    if(val.length>=10 && !val.includes(' ')){
+      processTicket(val);
+      document.getElementById('hw-input').value='';
+      hwBuffer='';
+    }
+  }, 300);
+}
+
+// ══════════════════════════════════════════
+// MANUAL
+// ══════════════════════════════════════════
+function manualCheck(){
+  const v = document.getElementById('manual-ticket').value.trim();
+  if(!v) return;
+  processTicket(v);
+  document.getElementById('manual-ticket').value='';
+}
+
+// ══════════════════════════════════════════
+// CORE: PROCESS TICKET
+// ══════════════════════════════════════════
+function processTicket(ticketNo){
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('id-ID',{hour12:false});
+  const ticketUp = ticketNo.toUpperCase().trim();
+
+  // Find in manifest
+  const pax = S.manifest.find(p=>{
+    const t = (p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+    return t===ticketUp;
+  });
+
+  // Transit?
+  const trEntry = S.transitLog.find(t=>
+    t.ticket.toUpperCase()===ticketUp && !t.returned
+  );
+
+  // Riwayat scan sebelumnya
+  const prevScans = S.scanLog.filter(l=>
+    l.ticket.toUpperCase()===ticketUp && (l.status==='OK'||l.status==='NAIK')
+  );
+  const scannedAtF1 = prevScans.some(l=>l.pos==='F1');
+  const scannedAtF2 = prevScans.some(l=>l.pos==='F2');
+
+  let status, name, info, gender='', kategori='', tujuan='';
+
+  if(!pax && !trEntry){
+    // Tidak ada di manifes
+    status='TIDAK DIKENAL'; name='—'; info='Nomor tiket tidak ada dalam manifes';
+
+  } else if(trEntry){
+    // Penumpang transit kembali
+    status='TRANSIT';
+    name=trEntry.name||(pax?getName(pax):'—');
+    info='Penumpang transit kembali · Keluar sejak '+trEntry.outTime;
+    trEntry.returned=true;
+    trEntry.returnTime=timeStr;
+
+  } else if(S.currentPos==='F2' && scannedAtF1 && !scannedAtF2){
+    // ✅ ALUR NORMAL: sudah scan F1, sekarang scan F2 = NAIK KAPAL
+    status='NAIK'; name=getName(pax);
+    info='Penumpang naik ke kapal · Sudah melewati Filter 1';
+
+  } else if(S.currentPos==='F1' && scannedAtF1){
+    // ⚠️ Scan F1 lagi setelah sebelumnya sudah scan F1
+    const lastF1=prevScans.filter(l=>l.pos==='F1').pop();
+    status='DUPLIKAT'; name=getName(pax);
+    info='Sudah di-scan di Filter 1 pukul '+lastF1.time+' · Curiga joki tiket!';
+    S.dupAlerts.unshift({ticket:ticketNo,name,time:timeStr,pos:S.currentPos,prevPos:'F1'});
+    if(S.dupAlerts.length>30) S.dupAlerts.pop();
+
+  } else if(S.currentPos==='F2' && scannedAtF2){
+    // ⚠️ Scan F2 lagi setelah sudah naik (duplikat di F2)
+    const lastF2=prevScans.filter(l=>l.pos==='F2').pop();
+    status='DUPLIKAT'; name=getName(pax);
+    info='Sudah tercatat NAIK ke kapal pukul '+lastF2.time+' · Duplikat!';
+    S.dupAlerts.unshift({ticket:ticketNo,name,time:timeStr,pos:S.currentPos,prevPos:'F2'});
+    if(S.dupAlerts.length>30) S.dupAlerts.pop();
+
+  } else if(S.currentPos==='F2' && !scannedAtF1){
+    // ⚠️ Langsung ke F2 tanpa lewat F1 — curigai (tapi bisa juga legitimate)
+    status='PERHATIAN'; name=getName(pax);
+    info='Belum terdeteksi di Filter 1 · Periksa identitas penumpang';
+  } else {
+    // ✅ SCAN PERTAMA di F1 (kondisi normal — penumpang baru masuk)
+    status='OK'; name=getName(pax);
+    gender=pax['Jen. Kelamin']||pax['JEN_KELAMIN']||pax['JENIS_KELAMIN']||'';
+    kategori=pax['Kategori']||pax['KATEGORI']||'';
+    tujuan=(pax['Pel. Tujuan']||pax['TUJUAN']||'').replace(/ \/ \d+$/,'');
+    info=(pax['Nama Kapal']?pax['Nama Kapal']+' · ':'')+(tujuan?'→ '+tujuan:'');
+    pax._status='dermaga';  // sudah di area dermaga, belum naik
+  }
+
+  // Update status manifes berdasarkan hasil scan
+  if(pax){
+    if(status==='NAIK'){
+      pax._status='naik';
+    } else if(status==='PERHATIAN'){
+      pax._status='perhatian';
+    }
+  }
+
+  lastScannedTicket = ticketNo; // untuk tombol catat penumpang lanjutan
+  const entry={time:timeStr,ticket:ticketNo,name,pos:S.currentPos,status,info,
+    gender,kategori,shipType:S.shipType};
+  S.scanLog.unshift(entry);
+  if(S.scanLog.length>500) S.scanLog.pop();
+  saveState();
+
+  showResult(status,name,info,gender,kategori,tujuan);
+  updateDashCounters();
+
+  // Auto-sync to Google Sheets
+  if(S.gs.connected && S.gs.autoSync){
+    gsPost({action:'addLog',...entry}).catch(()=>{});
+  }
+}
+
+function getName(pax){
+  return pax['Nama Pnp']||pax['NAMA']||pax['Nama']||'—';
+}
+
+// ══════════════════════════════════════════
+// RESULT
+// ══════════════════════════════════════════
+function showResult(status,name,info,gender,kategori,tujuan){
+  const box=document.getElementById('result-box');
+  box.style.display='block';
+  let cls,icon,label,col;
+  if(status==='OK'){
+    cls='ok';icon='✅';
+    label='FILTER 1 — LOLOS KE DERMAGA';
+    col='var(--green)';vib([100]);
+  } else if(status==='NAIK'){
+    cls='ok';icon='🚢';
+    label='NAIK KAPAL — KONFIRMASI!';
+    col='var(--teal)';vib([100,50,100]);
+  } else if(status==='DUPLIKAT'){
+    cls='dup';icon='🚨';
+    label='DUPLIKAT — TAHAN!';
+    col='var(--red)';vib([200,100,200]);
+  } else if(status==='TRANSIT'){
+    cls='transit';icon='🔄';
+    label='TRANSIT — LOLOS';
+    col='var(--amber)';vib([100]);
+  } else if(status==='PERHATIAN'){
+    cls='transit';icon='⚠️';
+    label='PERHATIAN — BELUM LEWAT FILTER 1';
+    col='var(--amber)';vib([150,50,150]);
+  } else{
+    cls='unknown';icon='❓';
+    label='TIDAK DIKENAL';
+    col='var(--gray-600)';vib([300]);
+  }
+
+  let extra='';
+  if(gender||kategori){
+    const gLabel=gender==='Wanita'?'👩 WANITA':'👨 PRIA';
+    const gBadge=gender?`<span class="badge ${gender==='Wanita'?'br':'bb'}" style="font-size:12px;padding:5px 11px">${gLabel}</span>`:'';
+    const kBadge=kategori?`<span class="badge bp" style="font-size:12px;padding:5px 11px;margin-left:5px">🏷 ${kategori}</span>`:'';
+    extra=`<div style="margin-top:9px">${gBadge}${kBadge}</div>`;
+  }
+
+  box.className='result-box '+cls;
+
+  // Konten khusus untuk TIDAK DIKENAL di F1: kemungkinan penumpang lanjutan
+  const isUnknownF1 = (status==='TIDAK DIKENAL' && S.currentPos==='F1');
+
+  box.innerHTML=`
+    <div class="r-icon">${icon}</div>
+    <div class="r-status" style="color:${col}">${label}</div>
+    <div class="r-name">${name}</div>
+    <div class="r-info">${info}</div>
+    ${extra}
+    ${isUnknownF1 ? `
+    <div style="margin:12px 0 8px;padding:10px 12px;background:rgba(0,0,0,.06);border-radius:8px;text-align:left">
+      <div style="font-size:12px;font-weight:700;color:var(--gray-800);margin-bottom:6px">⚠️ Kemungkinan Penumpang Lanjutan</div>
+      <div style="font-size:11px;color:var(--gray-600);line-height:1.7">
+        Tiket tidak ditemukan dalam manifes embarkasi.<br>
+        Lakukan <b>pengecekan identitas manual</b> (KTP + boarding pass).<br>
+        Jika terbukti penumpang lanjutan yang sah, klik tombol di bawah.
+      </div>
+    </div>
+    <button onclick="catatPenumpangLanjutan('${lastScannedTicket}')"
+      style="margin-top:4px;width:100%;padding:10px;border:none;border-radius:8px;
+             background:#1565C0;color:#fff;font-size:13px;font-weight:700;cursor:pointer">
+      ✍️ Catat sebagai Penumpang Lanjutan
+    </button>` : ''}
+    <div style="margin-top:10px;font-size:10px;color:var(--gray-400)">
+      Pos: <b>${S.currentPos==='F1'?'Filter 1 — Trestle':'Filter 2 — Tangga Kapal'}</b> · ${new Date().toLocaleTimeString('id-ID',{hour12:false})}
+    </div>`;
+  box.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+// ══════════════════════════════════════
+// LOAD MANIFES DARI GOOGLE SHEETS
+// ══════════════════════════════════════
+// Banner notifikasi auto-load saat pertama buka webapp
+function showAutoLoadBanner(){
+  // Buat banner di atas halaman scan
+  const existing = document.getElementById('auto-load-banner');
+  if(existing) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'auto-load-banner';
+  banner.style.cssText = `
+    position:fixed; top:56px; left:0; right:0; z-index:999;
+    background:#1565C0; color:#fff; padding:12px 16px;
+    display:flex; align-items:center; gap:10px;
+    font-size:13px; box-shadow:0 2px 8px rgba(0,0,0,.2);
+  `;
+  banner.innerHTML = `
+    <span style="font-size:18px">☁️</span>
+    <div style="flex:1">
+      <div style="font-weight:700">Manifes belum dimuat</div>
+      <div style="font-size:11px;opacity:.85">Klik tombol untuk memuat data penumpang dari Google Sheets</div>
+    </div>
+    <button onclick="autoLoadManifes(this.parentElement)"
+      style="background:#fff;color:#1565C0;border:none;padding:8px 14px;
+             border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">
+      Muat Sekarang
+    </button>
+  `;
+  document.body.appendChild(banner);
+}
+
+async function autoLoadManifes(banner){
+  const btn = banner.querySelector('button');
+  btn.textContent = '⏳ Memuat...';
+  btn.disabled = true;
+
+  try{
+    const url = S.gs.url + '?action=getManifes&t='+Date.now();
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if(!data.ok || !data.rows || data.rows.length < 2)
+      throw new Error(data.msg || 'Data manifes kosong');
+
+    const rows = data.rows;
+    const headers = rows[0].map(h=>String(h).trim());
+    const dataRows = rows.slice(1).filter(r=>r.some(c=>c!==''));
+    const manifest = dataRows.map(row=>{
+      const obj={};
+      headers.forEach((h,i)=>{ obj[h]=row[i]||''; });
+      return obj;
+    }).filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
+
+    if(!manifest.length) throw new Error('Tidak ada data penumpang');
+
+    const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
+    const tipeKapal = (headers.includes('Kategori')||headers.includes('KATEGORI')) ? 'perintis' : 'penumpang';
+
+    S.manifest = manifest;
+    S.shipType = tipeKapal;
+    if(namaKapal){ S.ship.name=namaKapal; document.getElementById('ship-label').textContent=namaKapal; }
+    saveState();
+    setShipType(tipeKapal);
+    updateManifestSummary();
+    renderManifestTable();
+    document.getElementById('manifest-summary').style.display='block';
+    document.getElementById('manifest-table-card').style.display='block';
+    updateDashCounters();
+
+    // Ubah banner jadi sukses lalu hilang
+    banner.style.background = '#2E7D32';
+    banner.innerHTML = `
+      <span style="font-size:18px">✅</span>
+      <div style="flex:1">
+        <div style="font-weight:700">${manifest.length} penumpang berhasil dimuat</div>
+        <div style="font-size:11px;opacity:.85">${namaKapal} · Siap scan</div>
+      </div>
+    `;
+    setTimeout(()=>{ banner.remove(); }, 3000);
+    showToast(`✅ ${manifest.length} penumpang siap di-boarding`,'success');
+
+  }catch(err){
+    banner.style.background = '#B71C1C';
+    banner.innerHTML = `
+      <span style="font-size:18px">❌</span>
+      <div style="flex:1">
+        <div style="font-weight:700">Gagal memuat manifes</div>
+        <div style="font-size:11px;opacity:.85">${err.message}</div>
+      </div>
+      <button onclick="autoLoadManifes(this.parentElement)"
+        style="background:#fff;color:#B71C1C;border:none;padding:8px 14px;
+               border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">
+        Coba Lagi
+      </button>
+    `;
+  }
+}
+
+// ══════════════════════════════════════
+// PERBARUI MANIFES (tarik ulang dari Sheets)
+// ══════════════════════════════════════
+
+// Simpan timestamp terakhir manifes dimuat
+function setManifesLoadTime(){
+  const now = new Date();
+  S._manifesLoadedAt = now.toISOString();
+  saveState();
+  updateManifesStatusUI();
+}
+
+function updateManifesStatusUI(){
+  const statusCard  = document.getElementById('manifes-status-card');
+  const emptyBox    = document.getElementById('manifes-empty-box');
+  const detailEl    = document.getElementById('manifes-status-detail');
+  const loadedTime  = document.getElementById('manifes-loaded-time');
+  const btnSummary  = document.getElementById('btn-summary-perbarui');
+
+  const hasManifes = S.manifest && S.manifest.length > 0;
+
+  // Toggle empty vs status card
+  if(statusCard) statusCard.style.display = hasManifes ? 'block' : 'none';
+  if(emptyBox)   emptyBox.style.display   = hasManifes ? 'none'  : 'block';
+  if(btnSummary) btnSummary.style.display = hasManifes ? ''      : 'none';
+
+  if(!hasManifes) return;
+
+  // Hitung waktu berlalu sejak dimuat
+  let waktuLabel = '—';
+  let tanggalLabel = '—';
+  if(S._manifesLoadedAt){
+    const loaded = new Date(S._manifesLoadedAt);
+    const now    = new Date();
+    const diffMs = now - loaded;
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffJam = Math.floor(diffMin / 60);
+    if(diffMin < 1)        waktuLabel = 'Baru saja';
+    else if(diffMin < 60)  waktuLabel = diffMin + ' menit lalu';
+    else                   waktuLabel = diffJam + ' jam lalu';
+    tanggalLabel = loaded.toLocaleDateString('id-ID') +
+                   ' · ' + loaded.toLocaleTimeString('id-ID',{hour12:false});
+  }
+
+  const namaKapal = S.ship.name || '—';
+  const jumlah    = S.manifest.length;
+  const tipe      = S.shipType === 'perintis' ? 'Kapal Perintis' : 'Kapal Penumpang';
+
+  if(detailEl){
+    detailEl.innerHTML =
+      `<b>${jumlah}</b> penumpang · ${namaKapal} · ${tipe}<br>` +
+      `Dimuat: ${tanggalLabel}` +
+      (waktuLabel !== '—' ? ` <span style="color:#E65100">(${waktuLabel})</span>` : '');
+  }
+  if(loadedTime){
+    loadedTime.style.display = 'block';
+    loadedTime.innerHTML =
+      `📅 ${tanggalLabel} &nbsp;|&nbsp; 🕐 ${waktuLabel}`;
+  }
+}
+
+// Jalankan update waktu setiap 30 detik agar label "X menit lalu" selalu fresh
+setInterval(updateManifesStatusUI, 30000);
+
+async function perbaruiManifes(){
+  if(!S.gs.url){
+    showToast('URL Google Sheets belum dikonfigurasi','error');
+    return;
+  }
+
+  // Tampilkan progress bar
+  const progress      = document.getElementById('manifes-progress');
+  const progressBar   = document.getElementById('manifes-progress-bar');
+  const progressLabel = document.getElementById('manifes-progress-label');
+  const btnPerbarui   = document.getElementById('btn-perbarui');
+  const btnSummary    = document.getElementById('btn-summary-perbarui');
+
+  if(progress)      progress.style.display = 'block';
+  if(btnPerbarui)   { btnPerbarui.disabled=true; btnPerbarui.textContent='⏳ Memperbarui...'; }
+  if(btnSummary)    { btnSummary.disabled=true; btnSummary.textContent='⏳ Memperbarui...'; }
+
+  // Animasi progress bar
+  let pct = 10;
+  const ticker = setInterval(()=>{
+    pct = Math.min(pct + 8, 85);
+    if(progressBar) progressBar.style.width = pct + '%';
+    if(pct < 30 && progressLabel) progressLabel.textContent = 'Menghubungi Google Sheets...';
+    else if(pct < 60 && progressLabel) progressLabel.textContent = 'Mengunduh data manifes...';
+    else if(progressLabel) progressLabel.textContent = 'Memproses data penumpang...';
+  }, 300);
+
+  try{
+    const url = S.gs.url + '?action=getManifes&t='+Date.now();
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+
+    if(!data.ok || !data.rows || data.rows.length < 2)
+      throw new Error(data.msg || 'Data manifes di Sheets kosong');
+
+    const rows    = data.rows;
+    const headers = rows[0].map(h=>String(h).trim());
+    const manifest = rows.slice(1)
+      .filter(r=>r.some(c=>c!==''))
+      .map(row=>{ const o={}; headers.forEach((h,i)=>o[h]=row[i]||''); return o; })
+      .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
+
+    if(!manifest.length) throw new Error('Tidak ada data penumpang yang valid');
+
+    const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
+    const tipeKapal = (headers.includes('Kategori')||headers.includes('KATEGORI'))
+                      ? 'perintis' : 'penumpang';
+
+    // Cek apakah ada perubahan
+    const prevCount = S.manifest.length;
+    const newCount  = manifest.length;
+    const isDiff    = newCount !== prevCount;
+
+    S.manifest  = manifest;
+    S.shipType  = tipeKapal;
+    if(namaKapal){
+      S.ship.name = namaKapal;
+      const lbl = document.getElementById('ship-label');
+      if(lbl) lbl.textContent = namaKapal;
+    }
+    setManifesLoadTime();  // simpan timestamp
+    saveState();
+    setShipType(tipeKapal);
+    updateManifestSummary();
+    renderManifestTable();
+    document.getElementById('manifest-summary').style.display='block';
+    document.getElementById('manifest-table-card').style.display='block';
+    updateDashCounters();
+
+    // Selesai — progress 100%
+    clearInterval(ticker);
+    if(progressBar)   progressBar.style.width='100%';
+    if(progressLabel) progressLabel.textContent='✅ Selesai!';
+
+    setTimeout(()=>{
+      if(progress) progress.style.display='none';
+      if(progressBar) progressBar.style.width='0%';
+    }, 1500);
+
+    // Toast info perubahan
+    if(isDiff){
+      showToast(
+        `✅ Manifes diperbarui · ${newCount} penumpang (${newCount>prevCount?'+':''}${newCount-prevCount} dari sebelumnya)`,
+        'success'
+      );
+    } else {
+      showToast(`✅ Manifes sudah terbaru · ${newCount} penumpang`, 'success');
+    }
+
+  } catch(err){
+    clearInterval(ticker);
+    if(progress)      progress.style.display='none';
+    if(progressBar)   progressBar.style.width='0%';
+    showToast('❌ Gagal perbarui: '+err.message, 'error');
+  } finally {
+    if(btnPerbarui){ btnPerbarui.disabled=false; btnPerbarui.textContent='🔄 Perbarui Data'; }
+    if(btnSummary) { btnSummary.disabled=false;  btnSummary.textContent='🔄 Perbarui'; }
+  }
+}
+
+async function loadManifesFromSheets(){
+  const btn = document.getElementById('btn-load-sheets');
+  const status = document.getElementById('load-sheets-status');
+
+  if(!S.gs.url){
+    status.innerHTML='<span style="color:var(--red)">⚠️ URL Google Sheets belum diisi. Buka menu ☁️ Google Sheets terlebih dahulu.</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Memuat...';
+  status.innerHTML = '<span style="color:var(--gray-500)">Menghubungi Google Sheets...</span>';
+
+  try{
+    const url = S.gs.url.replace('/exec','/exec') + '?action=getManifes&t='+Date.now();
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+
+    if(!data.ok || !data.rows || data.rows.length < 2){
+      throw new Error('Data manifes di Sheets kosong atau belum diupload Admin');
+    }
+
+    const rows = data.rows;
+    const headers = rows[0].map(h=>String(h).trim());
+    const dataRows = rows.slice(1).filter(r=>r.some(c=>c!==''));
+
+    // Deteksi tipe kapal dari header
+    const isPerintis = headers.includes('No Tiket') || headers.includes('NO_TIKET');
+    const isPenumpang = headers.includes('Nama Pnp') || headers.includes('NAMA_PNP') || headers.includes('NAMA');
+
+    if(!isPerintis && !isPenumpang){
+      throw new Error('Format manifes di Sheets tidak dikenali');
+    }
+
+    // Konversi ke format objek
+    const manifest = dataRows.map(row=>{
+      const obj={};
+      headers.forEach((h,i)=>{ obj[h]=row[i]||''; });
+      return obj;
+    }).filter(p=>{
+      const noTiket=p['No Tiket']||p['NO_TIKET']||'';
+      return noTiket.toString().trim()!=='';
+    });
+
+    if(manifest.length===0){
+      throw new Error('Tidak ada data penumpang yang valid di Sheets');
+    }
+
+    // Deteksi nama kapal dari data
+    const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
+    const tipeKapal = (headers.includes('Kategori')||headers.includes('KATEGORI')) ? 'perintis' : 'penumpang';
+
+    S.manifest = manifest;
+    S.shipType = tipeKapal;
+    if(namaKapal) S.ship.name = namaKapal;
+    setManifesLoadTime();
+    saveState();
+
+    // Update UI
+    setShipType(tipeKapal);
+    updateManifestSummary();
+    renderManifestTable();
+    document.getElementById('manifest-summary').style.display='block';
+    document.getElementById('manifest-table-card').style.display='block';
+    updateDashCounters();
+    updateManifesStatusUI();
+
+    status.innerHTML=`<span style="color:var(--green)">✅ Berhasil memuat <b>${manifest.length}</b> penumpang dari Google Sheets · ${new Date().toLocaleTimeString('id-ID',{hour12:false})}</span>`;
+    btn.textContent='✅ Manifes Termuat';
+    showToast(`✅ ${manifest.length} penumpang dimuat dari Sheets`,'success');
+
+  }catch(err){
+    status.innerHTML=`<span style="color:var(--red)">❌ Gagal: ${err.message}</span>`;
+    btn.textContent='☁️ Muat Manifes dari Google Sheets';
+    showToast('Gagal muat manifes: '+err.message,'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Refresh tombol load saat halaman manifes dibuka
+function refreshLoadSheetsBtn(){
+  const btn=document.getElementById('btn-load-sheets');
+  const st=document.getElementById('load-sheets-status');
+  if(!btn) return;
+  if(!S.gs.url){
+    btn.disabled=false;
+    if(st) st.innerHTML='<span style="color:var(--gray-400)">💡 Isi URL Google Sheets di menu ☁️ agar tombol ini aktif.</span>';
+  } else {
+    btn.disabled=false;
+    if(st && !st.innerHTML.includes('Berhasil')) st.innerHTML='';
+  }
+}
+
+
+// ══════════════════════════════════════
+// SISTEM LOGIN & ROLE
+// ══════════════════════════════════════
+
+let selectedLoginRole = null;
+
+function selectRole(role){
+  selectedLoginRole = role;
+  ['admin','f1','f2'].forEach(r=>{
+    document.getElementById('role-'+r).classList.toggle('active', r===role);
+  });
+  document.getElementById('pin-input').focus();
+}
+
+function doLogin(){
+  const pin = document.getElementById('pin-input').value.trim();
+  const err = document.getElementById('login-err');
+
+  if(!selectedLoginRole){
+    err.textContent = 'Pilih role terlebih dahulu';
+    return;
+  }
+  if(!pin){
+    err.textContent = 'Masukkan PIN';
+    return;
+  }
+  if(pin !== PINS[selectedLoginRole]){
+    err.textContent = '❌ PIN salah, coba lagi';
+    document.getElementById('pin-input').value='';
+    document.getElementById('pin-input').focus();
+    // Getar HP
+    if('vibrate' in navigator) navigator.vibrate([100,50,100]);
+    return;
+  }
+
+  // Login berhasil
+  applyRole(selectedLoginRole);
+}
+
+function applyRole(role){
+  currentRole = role;
+  const info = ROLE_INFO[role];
+
+  // Sembunyikan login screen
+  document.getElementById('login-screen').style.display = 'none';
+
+  // Update badge di header
+  const badge = document.getElementById('role-badge-header');
+  badge.className = 'role-badge ' + info.badge;
+  document.getElementById('role-badge-icon').textContent = info.icon;
+  document.getElementById('role-badge-label').textContent = info.label;
+
+  // Tampilkan/sembunyikan menu sesuai role
+  const access = ROLE_ACCESS[role];
+  ['scan','manifest','dashboard','log','gsheets'].forEach(page=>{
+    const tab = document.getElementById('tab-'+page);
+    if(tab) tab.style.display = access.includes(page) ? '' : 'none';
+  });
+
+  // Sembunyikan tombol Atur Kapal untuk petugas
+  const shipBtn = document.getElementById('ship-btn-header');
+  if(shipBtn) shipBtn.style.display = role==='admin' ? '' : 'none';
+
+  // Sembunyikan ship type switcher untuk petugas
+  const switcher = document.querySelector('.ship-type-switcher');
+  if(switcher) switcher.style.display = role==='admin' ? '' : 'none';
+
+  // Set pos otomatis untuk petugas F1/F2
+  if(info.pos){
+    S.currentPos = info.pos;
+    setPos(info.pos);
+    // Kunci tombol pos agar tidak bisa diubah
+    document.getElementById('pos-f1').style.pointerEvents = role==='f1' ? 'none' : '';
+    document.getElementById('pos-f2').style.pointerEvents = role==='f2' ? 'none' : '';
+  }
+
+  // Auto-load manifes untuk petugas
+  if(role !== 'admin'){
+    autoInitPetugas();
+  }
+
+  // Navigasi ke halaman default
+  showPage(access[0]);
+}
+
+async function autoInitPetugas(){
+  // Cek apakah manifes sudah ada di localStorage
+  if(S.manifest.length > 0){
+    // Sudah ada — langsung render
+    updateManifestSummary();
+    renderManifestTable();
+    document.getElementById('manifest-summary').style.display='block';
+    document.getElementById('manifest-table-card').style.display='block';
+    updateDashCounters();
+    showToast('✅ Manifes tersedia · '+S.manifest.length+' penumpang','success');
+    return;
+  }
+
+  // Belum ada — tarik otomatis dari Sheets
+  if(!S.gs.url){
+    showToast('⚠️ URL Google Sheets belum dikonfigurasi','warning');
+    return;
+  }
+
+  showToast('⏳ Memuat manifes...','warning');
+  try{
+    const url = S.gs.url + '?action=getManifes&t='+Date.now();
+    const res = await fetch(url);
+    const data = await res.json();
+    if(!data.ok || !data.rows || data.rows.length < 2)
+      throw new Error(data.msg||'Data manifes kosong');
+
+    const rows = data.rows;
+    const headers = rows[0].map(h=>String(h).trim());
+    const manifest = rows.slice(1)
+      .filter(r=>r.some(c=>c!==''))
+      .map(row=>{ const o={}; headers.forEach((h,i)=>o[h]=row[i]||''); return o; })
+      .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
+
+    if(!manifest.length) throw new Error('Tidak ada data penumpang');
+
+    const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
+    const tipeKapal = (headers.includes('Kategori')||headers.includes('KATEGORI')) ? 'perintis' : 'penumpang';
+
+    S.manifest = manifest;
+    S.shipType = tipeKapal;
+    if(namaKapal){ S.ship.name=namaKapal; document.getElementById('ship-label').textContent=namaKapal; }
+    setManifesLoadTime();
+    saveState();
+    setShipType(tipeKapal);
+    updateManifestSummary();
+    renderManifestTable();
+    document.getElementById('manifest-summary').style.display='block';
+    document.getElementById('manifest-table-card').style.display='block';
+    updateDashCounters();
+    updateManifesStatusUI();
+    showToast('✅ '+manifest.length+' penumpang siap di-boarding','success');
+
+  }catch(err){
+    showToast('❌ Gagal muat manifes: '+err.message,'error');
+  }
+}
+
+function confirmLogout(){
+  if(!confirm('Keluar dari sesi '+ROLE_INFO[currentRole].label+'?')) return;
+  logout();
+}
+
+function logout(){
+  currentRole = null;
+  selectedLoginRole = null;
+  // Reset form login
+  document.getElementById('pin-input').value='';
+  document.getElementById('login-err').textContent='';
+  ['admin','f1','f2'].forEach(r=>{
+    document.getElementById('role-'+r).classList.remove('active');
+  });
+  // Tampilkan login screen
+  document.getElementById('login-screen').style.display='flex';
+  // Tampilkan semua tab kembali (akan disembunyikan saat login berikutnya)
+  ['scan','manifest','dashboard','log','gsheets'].forEach(p=>{
+    const tab=document.getElementById('tab-'+p);
+    if(tab && p!=='transit') tab.style.display='';
+  });
+}
+
+function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
+
+// Simpan tiket terakhir yang di-scan untuk tombol catat lanjutan
+let lastScannedTicket = '';
+
+// Catat penumpang lanjutan secara manual ke log dan Google Sheets
+function catatPenumpangLanjutan(ticket){
+  if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
+  const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
+  const tanggal = new Date().toLocaleDateString('id-ID');
+
+  // Cek apakah sudah dicatat sebelumnya hari ini
+  const sudahAda = S.lanjutanLog && S.lanjutanLog.some(l =>
+    l.ticket.toUpperCase() === ticket.toUpperCase()
+  );
+  if(sudahAda){
+    showToast('Penumpang ini sudah dicatat sebagai lanjutan','warning');
+    return;
+  }
+
+  // Simpan ke lanjutanLog
+  if(!S.lanjutanLog) S.lanjutanLog = [];
+  const entry = { ticket, waktu: now, tanggal, petugas: S.ship.name || '—' };
+  S.lanjutanLog.unshift(entry);
+  saveState();
+
+  // Kirim ke Google Sheets jika terhubung
+  if(S.gs.connected){
+    gsPost({
+      action: 'addLanjutan',
+      ticket, waktu: now, tanggal,
+      kapal: S.ship.name || '',
+      voyage: S.ship.voyage || '',
+    }).then(()=>{
+      showToast('✅ Tercatat sebagai penumpang lanjutan · Tersimpan ke Sheets','success');
+    }).catch(()=>{
+      showToast('✅ Tercatat secara lokal · Gagal sync ke Sheets','warning');
+    });
+  } else {
+    showToast('✅ Tercatat sebagai penumpang lanjutan (lokal)','success');
+  }
+
+  // Update result box - ubah tombol jadi konfirmasi
+  const btn = document.querySelector('[onclick^="catatPenumpangLanjutan"]');
+  if(btn){
+    btn.textContent = '✅ Sudah Dicatat — Izinkan Masuk';
+    btn.style.background = 'var(--green)';
+    btn.disabled = true;
+  }
+}
+
+// ══════════════════════════════════════════
+// MANIFEST UPLOAD
+// ══════════════════════════════════════════
+function handleUpload(e){
+  const file=e.target.files[0]; if(!file) return;
+  const name=file.name.toLowerCase();
+  const isPDF = name.endsWith('.pdf');
+
+  // Update upload zone UI
+  document.getElementById('upload-icon').textContent = isPDF ? '📄' : '📊';
+  document.getElementById('upload-label').textContent = isPDF ? file.name : file.name;
+
+  if(isPDF){
+    if(S.shipType !== 'penumpang'){
+      showToast('PDF hanya untuk Kapal Penumpang. Ganti tipe kapal terlebih dahulu.','error');
+      return;
+    }
+    parsePDF(file);
+    return;
+  }
+
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    try{
+      let rows;
+      if(name.endsWith('.csv')){
+        rows=parseCSV(ev.target.result);
+      } else {
+        const wb=XLSX.read(ev.target.result,{type:'binary'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+        rows=parsePPSS(raw);
+      }
+      S.manifest=rows.filter(r=>r.NO_TIKET||(r['No Tiket']));
+      S.manifest.forEach(r=>{ r._status='pending'; });
+      saveState();
+      updateManifestSummary();
+      renderManifestTable();
+      document.getElementById('manifest-table-card').style.display='block';
+      showToast(`✅ ${S.manifest.length} penumpang dimuat`,'success');
+    }catch(err){
+      showToast('❌ Gagal baca file: '+err.message,'error');
+    }
+  };
+  if(name.endsWith('.csv')) reader.readAsText(file);
+  else reader.readAsBinaryString(file);
+  e.target.value='';
+}
+
+// ── PDF PARSER untuk Kapal Penumpang (Daftar Penumpang Regulasi PPSS) ──
+async function parsePDF(file){
+  document.getElementById('pdf-progress').style.display='block';
+  document.getElementById('pdf-progress-text').textContent='Memuat library PDF...';
+  document.getElementById('pdf-prog-bar').style.width='5%';
+
+  try{
+    // Load PDF.js dari CDN
+    if(!window.pdfjsLib){
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    document.getElementById('pdf-progress-text').textContent='Membuka file PDF...';
+    document.getElementById('pdf-prog-bar').style.width='15%';
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({data: arrayBuffer}).promise;
+    const totalPages = pdf.numPages;
+
+    document.getElementById('pdf-progress-sub').textContent=
+      `Total ${totalPages} halaman · Mengekstrak data...`;
+
+    const results = [];
+    // Regex: No tiket kapal penumpang = 15 digit angka
+    const TICKET_RE = /(\d{15})/;
+    // Regex pelabuhan: PDF.js menggabungkan call+kode tujuan menjadi '1868(LUWUK)'
+    // Format: NNN(NAMA) \dNNN(NAMA) \d  (tanpa spasi antara call asal dan kode tujuan)
+        const PEL_RE = /(\d{3})\(([^)]+)\)\s+\d+\s+(\d{3})\(([^)]+)\)\s+\d+/;
+    // Regex: kategori dari kolom DEWASA ANAK BAYI
+    const KAT_RE = /^(.*?)\s+(1\s+0\s+0|0\s+1\s+0|0\s+0\s+1)\s+(\d+)\s+(\d+)$/;
+
+    let voyageNo = '', generatedAt = '', dicetak = '';
+
+    for(let p=1; p<=totalPages; p++){
+      const pct = Math.round(15 + (p/totalPages)*80);
+      document.getElementById('pdf-prog-bar').style.width = pct+'%';
+      document.getElementById('pdf-progress-text').textContent =
+        `Halaman ${p} dari ${totalPages}...`;
+
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+
+      // Gabungkan item teks menjadi baris berdasarkan posisi Y
+      const items = tc.items.map(i=>({
+        str: i.str, x: Math.round(i.transform[4]), y: Math.round(i.transform[5])
+      }));
+
+      // Kelompokkan per baris (Y sama ± 3px)
+      const lineMap = {};
+      items.forEach(it=>{
+        const yKey = Math.round(it.y / 4) * 4;
+        if(!lineMap[yKey]) lineMap[yKey]=[];
+        lineMap[yKey].push(it);
+      });
+
+      // Urutkan baris dari atas ke bawah (Y besar = atas di PDF)
+      const sortedYs = Object.keys(lineMap).map(Number).sort((a,b)=>b-a);
+
+      for(const y of sortedYs){
+        // Urutkan item dalam baris dari kiri ke kanan (X kecil = kiri)
+        const lineItems = lineMap[y].sort((a,b)=>a.x-b.x);
+        const line = lineItems.map(i=>i.str).join(' ').trim();
+
+        // Ambil info header dari halaman pertama
+        if(p===1){
+          if(line.includes('NO Pelayaran')) voyageNo = line;
+          if(line.includes('Generated at')) { generatedAt = line; dicetak = line; }
+        }
+
+        // Cari baris data penumpang (ada no tiket 15 digit)
+        const tm = TICKET_RE.exec(line);
+        if(!tm) continue;
+
+        const ticket = tm[1];
+        const before = line.slice(0, tm.index).trim();
+        const after  = line.slice(tm.index + 15).trim();
+
+        // Parse pelabuhan
+        const pm = PEL_RE.exec(before);
+        let asal='', tujuan='', kelas='EKO (Ekonomi)';
+        if(pm){
+          asal   = pm[2].trim();  // group 2 = nama asal
+          tujuan = pm[4].trim();  // group 4 = nama tujuan
+          const klasRaw = before.slice(0, pm.index).trim();
+          kelas  = klasRaw.includes('EK1')||klasRaw.includes('KABIN KLS 1')
+                   ? 'EK1 (Eks Kabin Kls 1)' : 'EKO (Ekonomi)';
+        }
+
+        // Parse nama + kategori + umur
+        const km = KAT_RE.exec(after.trim());
+        let nama='', kat='DEWASA', umurTh='', umurBln='';
+        if(km){
+          nama    = km[1].trim();
+          const pt = km[2].replace(/\s/g,'');
+          kat     = pt==='100' ? 'DEWASA' : pt==='010' ? 'ANAK' : 'BAYI';
+          umurTh  = km[3];
+          umurBln = km[4];
+        } else {
+          nama = after;
+        }
+
+        if(!nama || nama.length < 1) continue;
+
+        results.push({
+          NO_TIKET: ticket,
+          NAMA: nama,
+          KELAS: kelas,
+          ASAL: asal,
+          TUJUAN: tujuan,
+          KATEGORI: kat,
+          UMUR_TAHUN: umurTh,
+          UMUR_BULAN: umurBln,
+          _voyage: voyageNo,
+          _status: 'pending',
+        });
+      }
+    }
+
+    // Simpan info voyage ke ship state jika belum diisi
+    if(voyageNo && !S.ship.voyage){
+      const vm = voyageNo.match(/\(([^)]+)\)/);
+      if(vm) S.ship.voyage = vm[1];
+    }
+
+    // Deduplikasi berdasarkan NO_TIKET (jaga-jaga jika ada overlap antar halaman)
+    const seen = new Set();
+    const unique = results.filter(r=>{ if(seen.has(r.NO_TIKET)) return false; seen.add(r.NO_TIKET); return true; });
+
+    document.getElementById('pdf-prog-bar').style.width='100%';
+    document.getElementById('pdf-progress-text').textContent='✅ Selesai!';
+    document.getElementById('pdf-progress-sub').textContent=
+      `${unique.length} penumpang berhasil diekstrak dari ${totalPages} halaman`;
+
+    S.manifest = unique;
+    saveState();
+
+    setTimeout(()=>{
+      document.getElementById('pdf-progress').style.display='none';
+      updateManifestSummary();
+      renderManifestTable();
+      document.getElementById('manifest-table-card').style.display='block';
+
+      // Breakdown kategori
+      const dws = unique.filter(r=>r.KATEGORI==='DEWASA').length;
+      const anak = unique.filter(r=>r.KATEGORI==='ANAK').length;
+      const bayi = unique.filter(r=>r.KATEGORI==='BAYI').length;
+      const tujList = [...new Set(unique.map(r=>r.TUJUAN).filter(Boolean))].join(', ');
+
+      showToast(`✅ ${unique.length} penumpang · DWS:${dws} ANAK:${anak} BAYI:${bayi}`,'success');
+      if(tujList) showToast(`Rute tujuan: ${tujList}`,'success');
+    }, 600);
+
+  }catch(err){
+    document.getElementById('pdf-progress').style.display='none';
+    showToast('❌ Gagal baca PDF: '+err.message,'error');
+    console.error(err);
+  }
+  document.getElementById('file-input').value='';
+}
+
+function loadScript(src){
+  return new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=src; s.onload=resolve; s.onerror=reject;
+    document.head.appendChild(s);
+  });
+}
+
+function parsePPSS(raw){
+  let headerIdx=-1;
+  for(let i=0;i<raw.length;i++){
+    const row=raw[i].map(c=>String(c).trim());
+    if(row.some(c=>c==='No Tiket'||c==='NO_TIKET'||c==='NO TIKET')){
+      headerIdx=i; break;
+    }
+  }
+  if(headerIdx===-1){
+    const headers=raw[0].map(c=>String(c).trim().toUpperCase().replace(/\s+/g,'_'));
+    return raw.slice(1).map(row=>{
+      const obj={}; headers.forEach((h,i)=>obj[h]=String(row[i]||'').trim());
+      if(obj['NO_TIKET']||obj['NO TIKET']) { obj.NO_TIKET=obj.NO_TIKET||obj['NO TIKET']; return obj; }
+      return null;
+    }).filter(Boolean);
+  }
+  const headers=raw[headerIdx].map(c=>String(c).trim());
+  const result=[];
+  for(let i=headerIdx+1;i<raw.length;i++){
+    const row=raw[i];
+    if(!row||row.every(c=>!c)) continue;
+    const obj={};
+    headers.forEach((h,j)=>obj[h]=String(row[j]||'').trim());
+    const first=String(row[0]||'').trim();
+    if(first.startsWith('Jumlah')||first.startsWith('Grand Total')||first.startsWith('Mengetahui')) break;
+    const ticket=obj['No Tiket']||obj['NO_TIKET']||obj['NO TIKET']||'';
+    if(ticket) { obj.NO_TIKET=ticket; result.push(obj); }
+  }
+  return result;
+}
+
+function parseCSV(text){
+  const lines=text.trim().split('\n');
+  const headers=lines[0].split(',').map(h=>h.trim().replace(/"/g,''));
+  return lines.slice(1).map(line=>{
+    const vals=line.split(',').map(v=>v.trim().replace(/"/g,''));
+    const obj={}; headers.forEach((h,i)=>obj[h]=vals[i]||'');
+    return obj;
+  });
+}
+
+function updateManifestSummary(){
+  const total=S.manifest.length;
+  const boarded=S.manifest.filter(p=>p._status==='naik').length;
+  document.getElementById('m-total').textContent=total;
+  document.getElementById('m-boarded').textContent=boarded;
+  document.getElementById('m-pending').textContent=total-boarded;
+  document.getElementById('manifest-summary').style.display=total>0?'block':'none';
+}
+
+function renderManifestTable(){
+  updateManifestSummary();
+  const q=(document.getElementById('search-manifest')?.value||'').toLowerCase();
+  const filtered=S.manifest.filter(p=>{
+    const name=(p['Nama Pnp']||p['NAMA']||'').toLowerCase();
+    const ticket=(p['No Tiket']||p['NO_TIKET']||'').toString().toLowerCase();
+    return !q||name.includes(q)||ticket.includes(q);
+  });
+
+  if(S.shipType==='perintis'){
+    const tbody=document.getElementById('tbody-perintis');
+    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray-400);padding:20px">Tidak ada data</td></tr>'; return; }
+    tbody.innerHTML=filtered.slice(0,300).map((p,i)=>{
+      const scan=S.scanLog.find(l=>l.ticket===(p['No Tiket']||p.NO_TIKET||'').toString());
+      let dc='dgr',sl='Belum';
+      if(p._status==='naik'){dc='dg';sl='✅ Naik';}
+      else if(p._status==='dermaga'){dc='da';sl='🚶 Dermaga';}
+      else if(p._status==='perhatian'){dc='da';sl='⚠️ Perhatian';}
+      else if(scan?.status==='DUPLIKAT'){dc='dr';sl='🚨 Duplikat!';}
+      const tujuan=(p['Pel. Tujuan']||'').replace(/ \/ \d+$/,'');
+      const asal=(p['Pel. Awal']||'').replace(/ \/ \d+$/,'');
+      const posChip=scan?`<span class="chip ${scan.pos==='F1'?'cf1':'cf2'}">${scan.pos}</span>`:'—';
+      const kel=p['Jen. Kelamin']||'';
+      const kat=p['Kategori']||'';
+      return `<tr>
+        <td style="color:var(--gray-400)">${i+1}</td>
+        <td style="font-family:monospace;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p['No Tiket']||p.NO_TIKET||'—'}</td>
+        <td style="font-weight:600">${p['Nama Pnp']||'—'}</td>
+        <td>${asal}</td><td>${tujuan}</td>
+        <td style="white-space:nowrap">${p['Tgl Etd']||'—'}</td>
+        <td><span class="badge ${kel==='Wanita'?'br':'bb'}" style="font-size:10px">${kel||'—'}</span></td>
+        <td><span class="badge bgr" style="font-size:10px">${kat||'—'}</span></td>
+        <td><span class="sdot ${dc}"></span>${sl}</td>
+        <td>${posChip}</td>
+      </tr>`;
+    }).join('');
+  } else {
+    const tbody=document.getElementById('tbody-penumpang');
+    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray-400);padding:20px">Tidak ada data · Upload manifes PDF atau Excel terlebih dahulu</td></tr>'; return; }
+    tbody.innerHTML=filtered.slice(0,500).map((p,i)=>{
+      const ticket=(p.NO_TIKET||p['No Tiket']||'').toString();
+      const scan=S.scanLog.find(l=>l.ticket===ticket);
+      let dc='dgr',sl='Belum';
+      if(p._status==='naik'){dc='dg';sl='✅ Naik';}
+      else if(p._status==='dermaga'){dc='da';sl='🚶 Dermaga';}
+      else if(scan?.status==='DUPLIKAT'){dc='dr';sl='🚨 Duplikat!';}
+      const kat = p.KATEGORI||p['Kategori']||'—';
+      const tujuan = p.TUJUAN||p['Pel. Tujuan']||p['PELABUHAN TUJUAN']||'—';
+      const asal = p.ASAL||p['Pel. Awal']||p['PELABUHAN ASAL']||'—';
+      const kelas = p.KELAS||p['KELAS EKONOMI']||'—';
+      const umur = p.UMUR_TAHUN ? p.UMUR_TAHUN+' th' : (p.USIA||'—');
+      const posChip=scan?`<span class="chip ${scan.pos==='F1'?'cf1':'cf2'}">${scan.pos}</span>`:'—';
+      let katBadge='';
+      if(kat==='BAYI') katBadge='<span class="badge bp" style="font-size:10px">👶 BAYI</span>';
+      else if(kat==='ANAK') katBadge='<span class="badge ba" style="font-size:10px">🧒 ANAK</span>';
+      else if(kat==='DEWASA') katBadge='<span class="badge bb" style="font-size:10px">🧑 DWS</span>';
+      else katBadge=`<span class="badge bgr" style="font-size:10px">${kat}</span>`;
+      return `<tr>
+        <td style="color:var(--gray-400);font-size:11px">${i+1}</td>
+        <td style="font-family:monospace;font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ticket}">${ticket||'—'}</td>
+        <td style="font-weight:600;font-size:12px">${p.NAMA||p['Nama Pnp']||'—'}</td>
+        <td style="font-size:11px">${kelas}</td>
+        <td style="font-size:11px">${asal}</td>
+        <td style="font-size:11px;font-weight:600">${tujuan}</td>
+        <td>${katBadge}</td>
+        <td style="font-size:11px;text-align:center">${umur}</td>
+        <td><span class="sdot ${dc}"></span><span style="font-size:11px">${sl}</span></td>
+        <td>${posChip}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+function clearManifest(){
+  if(!confirm('Hapus semua data manifes?')) return;
+  S.manifest=[]; saveState();
+  updateManifestSummary(); renderManifestTable();
+  document.getElementById('manifest-table-card').style.display='none';
+  showToast('Manifes dihapus');
+}
+
+// ══════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════
+function updateDashCounters(){
+  const total=S.manifest.length;
+  const naik=S.manifest.filter(p=>p._status==='naik').length;
+  const f1=S.scanLog.filter(l=>l.pos==='F1'&&l.status==='OK').length;
+  const f2=S.scanLog.filter(l=>l.pos==='F2'&&l.status==='NAIK').length;
+  const pct=total>0?Math.round(naik/total*100):0;
+  document.getElementById('d-total').textContent=total;
+  document.getElementById('d-naik').textContent=naik;
+  document.getElementById('d-dup').textContent=S.dupAlerts.length;
+  document.getElementById('d-transit').textContent=S.transitLog.filter(t=>!t.returned).length;
+  document.getElementById('prog-bar').style.width=pct+'%';
+  document.getElementById('prog-pct').textContent=pct+'%';
+  document.getElementById('d-f1').textContent='Filter 1: '+f1+' scan valid';
+  document.getElementById('d-f2').textContent='Filter 2: '+f2+' scan valid';
+  // Perintis breakdown
+  const dws=S.manifest.filter(p=>(p.Kategori||p.KATEGORI||'').toUpperCase()==='DWS').length;
+  const anak=S.manifest.filter(p=>(p.Kategori||p.KATEGORI||'').toUpperCase()==='ANAK').length;
+  const bayi=S.manifest.filter(p=>(p.Kategori||p.KATEGORI||'').toUpperCase()==='BAYI').length;
+  document.getElementById('d-dws').textContent=dws;
+  document.getElementById('d-anak').textContent=anak;
+  document.getElementById('d-bayi').textContent=bayi;
+}
+
+function updateDashboard(){
+  updateDashCounters();
+  document.getElementById('dash-ship').textContent=S.ship.name||'Belum Diatur';
+  document.getElementById('dash-route').textContent=S.ship.route||(S.ship.voyage?'Voyage: '+S.ship.voyage:'—');
+  document.getElementById('dash-time').textContent=S.ship.time||'—';
+  document.getElementById('dash-type').textContent=S.shipType==='perintis'?'Perintis':'Penumpang';
+  // Alert list
+  const al=document.getElementById('alert-list');
+  if(!S.dupAlerts.length){
+    al.innerHTML='<div class="empty"><div class="empty-icon">✅</div><div class="empty-title">Tidak ada alert</div></div>';
+  } else {
+    al.innerHTML=S.dupAlerts.slice(0,10).map(a=>`
+      <div style="display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--gray-100)">
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--red-lt);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🚨</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:12px">${a.name}</div>
+          <div style="font-size:11px;color:var(--gray-400)">${a.ticket.substring(0,20)}... · ${a.time} · Pos ${a.pos}</div>
+        </div>
+        <span class="badge br">Duplikat</span>
+      </div>`).join('');
+  }
+}
+
+setInterval(()=>{
+  const el=document.getElementById('live-clock');
+  if(el) el.textContent=new Date().toLocaleTimeString('id-ID',{hour12:false});
+},1000);
+
+// ══════════════════════════════════════════
+// TRANSIT
+// ══════════════════════════════════════════
+// ══════════════════════════════════════
+// TRANSIT SCANNER SYSTEM
+// ══════════════════════════════════════
+
+let trScanMode = 'hardware';
+let trQrScanner = null;
+let trHwTimer = null;
+let trFilter = 'all';
+
+function setTransitMode(m){
+  trScanMode = m;
+  document.getElementById('tr-mode-hw').classList.toggle('active', m==='hardware');
+  document.getElementById('tr-mode-cam').classList.toggle('active', m==='camera');
+  document.getElementById('tr-hw-box').style.display = m==='hardware'?'block':'none';
+  document.getElementById('tr-cam-box').style.display = m==='camera'?'block':'none';
+  if(m!=='camera') stopTransitCam();
+  if(m==='hardware') setTimeout(focusTrHw, 300);
+}
+
+function focusTrHw(){
+  document.getElementById('tr-hw-input').focus();
+  showToast('Scanner transit siap','success');
+}
+
+function trHwKeyDown(e){
+  if(e.key==='Enter'){
+    const val=document.getElementById('tr-hw-input').value.trim();
+    if(val){ processTransitTicket(val); document.getElementById('tr-hw-input').value=''; }
+    e.preventDefault();
+  }
+}
+
+function trHwInput(e){
+  clearTimeout(trHwTimer);
+  trHwTimer=setTimeout(()=>{
+    const val=document.getElementById('tr-hw-input').value.trim();
+    if(val.length>=10 && !val.includes(' ')){
+      processTransitTicket(val);
+      document.getElementById('tr-hw-input').value='';
+    }
+  },300);
+}
+
+function startTransitCam(){
+  document.getElementById('tr-cam-placeholder').style.display='none';
+  document.getElementById('tr-qr-reader').style.display='block';
+  document.getElementById('tr-btn-start').style.display='none';
+  document.getElementById('tr-btn-stop').style.display='inline-flex';
+  trQrScanner = new Html5Qrcode('tr-qr-reader');
+  trQrScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:220,height:220}},
+    (txt)=>{
+      processTransitTicket(txt.trim());
+      trQrScanner.pause(true);
+      setTimeout(()=>{ try{trQrScanner.resume();}catch(e){} },3000);
+    },()=>{}
+  ).catch(err=>{ showToast('Kamera tidak bisa diakses','error'); stopTransitCam(); });
+}
+
+function stopTransitCam(){
+  if(trQrScanner){
+    trQrScanner.stop().then(()=>{ trQrScanner.clear(); trQrScanner=null; }).catch(()=>{});
+  }
+  const ph=document.getElementById('tr-cam-placeholder');
+  const qr=document.getElementById('tr-qr-reader');
+  if(ph) ph.style.display='flex';
+  if(qr) qr.style.display='none';
+  const bs=document.getElementById('tr-btn-start');
+  const bp=document.getElementById('tr-btn-stop');
+  if(bs) bs.style.display='inline-flex';
+  if(bp) bp.style.display='none';
+}
+
+// ── INTI: Proses scan tiket transit ──
+function processTransitTicket(ticketNo){
+  if(!ticketNo) return;
+  const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
+  const ticketUp = ticketNo.toUpperCase().trim();
+
+  // Cek di manifes (untuk ambil nama)
+  const pax = S.manifest.find(p=>
+    (p['No Tiket']||p.NO_TIKET||'').toString().trim().toUpperCase()===ticketUp
+  );
+  const name = pax ? getName(pax) : '—';
+
+  // Cari entri transit aktif (sudah keluar, belum kembali)
+  const existing = S.transitLog.find(t=>
+    t.ticket.toUpperCase()===ticketUp && !t.returned
+  );
+
+  let result, entry;
+
+  if(existing){
+    // ── SCAN KEDUA: penumpang KEMBALI ke dermaga ──
+    existing.returned = true;
+    existing.returnTime = now;
+    result = 'KEMBALI';
+    entry = existing;
+    showTransitResult('kembali', name, ticketNo, now, existing.outTime);
+    showToast(`✅ ${name} kembali ke dermaga`,'success');
+    vib([100,50,100]);
+    // Kirim update ke Sheets
+    if(S.gs.connected){
+      gsPost({
+        action:'addTransit',
+        ticket:ticketNo, name,
+        outTime:existing.outTime,
+        returnTime:now,
+        status:'kembali'
+      }).catch(()=>{});
+    }
+  } else {
+    // ── SCAN PERTAMA: penumpang KELUAR ke terminal ──
+    const newEntry = {ticket:ticketNo, name, outTime:now, returned:false};
+    S.transitLog.unshift(newEntry);
+    result = 'KELUAR';
+    entry = newEntry;
+    showTransitResult('keluar', name, ticketNo, now, null);
+    showToast(`🚶 ${name} dicatat keluar ke terminal`,'warning');
+    vib([150]);
+    // Kirim ke Sheets secara real-time
+    if(S.gs.connected){
+      gsPost({
+        action:'addTransit',
+        ticket:ticketNo, name,
+        outTime:now,
+        returnTime:'',
+        status:'keluar'
+      }).then(()=>{
+        updateTrSyncStatus(true);
+      }).catch(()=>{
+        updateTrSyncStatus(false);
+      });
+    }
+  }
+
+  // Bersihkan input manual
+  const mi=document.getElementById('tr-manual-input');
+  if(mi) mi.value='';
+
+  saveState();
+  renderTransitList();
+  updateTrStats();
+}
+
+function showTransitResult(type, name, ticket, time, outTime){
+  const box = document.getElementById('tr-result-box');
+  box.style.display='block';
+  const isKembali = type==='kembali';
+  box.className = 'result-box ' + (isKembali?'ok':'transit');
+  const durasi = outTime ? hitungDurasi(outTime, time) : '';
+  box.innerHTML=`
+    <div class="r-icon">${isKembali?'✅':'🚶'}</div>
+    <div class="r-status" style="color:${isKembali?'var(--green)':'var(--amber)'}">
+      ${isKembali?'KEMBALI KE DERMAGA':'KELUAR KE TERMINAL'}
+    </div>
+    <div class="r-name">${name}</div>
+    <div class="r-info" style="font-family:monospace;font-size:11px">${ticket}</div>
+    ${isKembali && durasi ? `<div class="r-info" style="margin-top:4px">⏱ Durasi di terminal: ${durasi}</div>` : ''}
+    <div style="margin-top:8px;font-size:10px;color:var(--gray-400)">
+      ${isKembali?'Keluar: '+outTime+' · ':''} ${time}
+      ${S.gs.connected ? '<span style="color:var(--green)"> · ☁️ Tersimpan ke Sheets</span>' : '<span style="color:var(--gray-400)"> · ⚠️ Belum terhubung Sheets</span>'}
+    </div>`;
+  box.scrollIntoView({behavior:'smooth',block:'nearest'});
+  // Auto-hide setelah 5 detik
+  setTimeout(()=>{ box.style.display='none'; }, 5000);
+}
+
+function hitungDurasi(outTime, returnTime){
+  try{
+    const [oh,om,os] = outTime.split(':').map(Number);
+    const [rh,rm,rs] = returnTime.split(':').map(Number);
+    const diffSec = (rh*3600+rm*60+rs) - (oh*3600+om*60+os);
+    if(diffSec<0) return '';
+    const m = Math.floor(diffSec/60);
+    const s = diffSec%60;
+    return m>0 ? `${m} menit ${s} detik` : `${s} detik`;
+  }catch(e){ return ''; }
+}
+
+function updateTrStats(){
+  const out = S.transitLog.filter(t=>!t.returned).length;
+  const back = S.transitLog.filter(t=>t.returned).length;
+  const el_out=document.getElementById('tr-count-out');
+  const el_back=document.getElementById('tr-count-back');
+  const el_tot=document.getElementById('tr-count-total');
+  if(el_out) el_out.textContent=out;
+  if(el_back) el_back.textContent=back;
+  if(el_tot) el_tot.textContent=S.transitLog.length;
+  // Update dashboard juga
+  const dd=document.getElementById('d-transit');
+  if(dd) dd.textContent=out;
+}
+
+function updateTrSyncStatus(ok){
+  const dot=document.getElementById('tr-sync-dot');
+  const txt=document.getElementById('tr-sync-text');
+  const bar=document.getElementById('tr-sync-bar');
+  if(!dot||!txt||!bar) return;
+  if(!S.gs.connected){
+    dot.className='sync-dot'; bar.className='sync-bar disconnected';
+    txt.textContent='Sync Google Sheets: belum terhubung';
+  } else if(ok){
+    dot.className='sync-dot ok'; bar.className='sync-bar connected';
+    txt.textContent='Sync Google Sheets: tersimpan · '+new Date().toLocaleTimeString('id-ID',{hour12:false});
+  } else {
+    dot.className='sync-dot'; bar.className='sync-bar disconnected';
+    txt.textContent='Sync Google Sheets: gagal — periksa koneksi';
+  }
+}
+
+async function syncTransitNow(){
+  if(!S.gs.connected){showToast('Belum terhubung ke Google Sheets','error');return;}
+  showToast('🔄 Sync transit...','warning');
+  let ok=true;
+  for(const t of S.transitLog.slice(0,100)){
+    try{
+      await gsPost({
+        action:'addTransit',
+        ticket:t.ticket, name:t.name,
+        outTime:t.outTime,
+        returnTime:t.returnTime||'',
+        status:t.returned?'kembali':'keluar'
+      });
+    }catch(e){ ok=false; }
+  }
+  updateTrSyncStatus(ok);
+  showToast(ok?'✅ Transit tersync':'❌ Sync sebagian gagal', ok?'success':'error');
+}
+
+function clearTransitLog(){
+  if(!confirm('Hapus semua log transit?')) return;
+  S.transitLog=[];
+  saveState();
+  renderTransitList();
+  updateTrStats();
+  showToast('Log transit dihapus');
+}
+
+function setTransitFilter(f, el){
+  trFilter=f;
+  document.querySelectorAll('#page-transit .fbtn').forEach(b=>b.classList.remove('active'));
+  if(el) el.classList.add('active');
+  renderTransitList();
+}
+
+function renderTransitList(){
+  const c=document.getElementById('transit-list');
+  if(!c) return;
+  let list=S.transitLog;
+  if(trFilter==='out') list=list.filter(t=>!t.returned);
+  else if(trFilter==='back') list=list.filter(t=>t.returned);
+
+  if(!list.length){
+    c.innerHTML='<div class="empty"><div class="empty-icon">🔄</div><div class="empty-title">Belum ada penumpang transit</div></div>';
+    return;
+  }
+
+  c.innerHTML=list.map((t,i)=>{
+    const isOut=!t.returned;
+    const durasi = t.returned && t.returnTime ? hitungDurasi(t.outTime,t.returnTime) : '';
+    return `<div class="transit-card" style="${!isOut?'opacity:.75':''}">
+      <div class="t-avatar" style="background:${isOut?'var(--amber-lt)':'var(--green-lt)'}">
+        ${isOut?'🚶':'✅'}
+      </div>
+      <div class="t-info">
+        <div class="t-name">${t.name}</div>
+        <div class="t-detail" style="font-family:monospace;font-size:10px">${t.ticket}</div>
+        <div class="t-detail">
+          ${isOut
+            ? `🚪 Keluar: <b>${t.outTime}</b>`
+            : `🚪 Keluar: ${t.outTime} &nbsp;→&nbsp; ✅ Kembali: <b>${t.returnTime}</b>${durasi?' · '+durasi:''}`
+          }
+        </div>
+      </div>
+      <span class="badge ${isOut?'ba':'bg'}">${isOut?'Di Terminal':'Kembali'}</span>
+    </div>`;
+  }).join('');
+}
+
+// Fungsi lama (dipertahankan untuk kompatibilitas)
+function markReturned(idx){ /* tidak dipakai lagi */ }
+function saveTransit(){ /* tidak dipakai lagi */ }
+
+// ══════════════════════════════════════════
+// LOG
+// ══════════════════════════════════════════
+function filterLog(f,el){
+  S.logFilter=f;
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderLog();
+}
+
+function renderLog(){
+  const filtered=S.logFilter==='all'?S.scanLog:S.scanLog.filter(l=>l.status===S.logFilter);
+  const tbody=document.getElementById('log-tbody');
+  const empty=document.getElementById('log-empty');
+  if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  tbody.innerHTML=filtered.map(l=>{
+    let badge='';
+    if(l.status==='OK') badge='<span class="badge bg">✅ F1 Lolos</span>';
+    else if(l.status==='NAIK') badge='<span class="badge bt">🚢 Naik Kapal</span>';
+    else if(l.status==='DUPLIKAT') badge='<span class="badge br">🚨 Duplikat</span>';
+    else if(l.status==='TRANSIT') badge='<span class="badge ba">🔄 Transit</span>';
+    else if(l.status==='PERHATIAN') badge='<span class="badge ba">⚠️ Perhatian</span>';
+    else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
+    const pc=`<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
+    return `<tr>
+      <td style="font-size:11px;color:var(--gray-400);white-space:nowrap">${l.time}</td>
+      <td style="font-family:monospace;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.ticket}</td>
+      <td style="font-weight:600;font-size:12px">${l.name}</td>
+      <td>${pc}</td><td>${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
+function clearLog(){
+  if(!confirm('Hapus semua riwayat scan?')) return;
+  S.scanLog=[]; S.dupAlerts=[]; saveState(); renderLog(); updateDashCounters();
+  showToast('Log dihapus');
+}
+
+function exportLog(){
+  if(!S.scanLog.length){showToast('Belum ada data','warning');return;}
+  const h=['Waktu','No Tiket','Nama','Pos','Status','Info','Tipe Kapal'];
+  const rows=S.scanLog.map(l=>[l.time,l.ticket,l.name,l.pos,l.status,l.info||'',l.shipType||'']);
+  const csv=[h,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`SMART-Log-${new Date().toLocaleDateString('id-ID').replace(/\//g,'-')}.csv`;
+  a.click(); showToast('✅ Log diekspor','success');
+}
+
+// ══════════════════════════════════════════
+// SHIP MODAL
+// ══════════════════════════════════════════
+function openModal(id){
+  if(id==='modal-ship'){
+    document.getElementById('inp-ship-name').value=S.ship.name;
+    document.getElementById('inp-ship-route').value=S.ship.route;
+    document.getElementById('inp-ship-voyage').value=S.ship.voyage;
+    document.getElementById('inp-ship-time').value=S.ship.time;
+  }
+  document.getElementById(id).classList.add('open');
+}
+function saveShip(){
+  S.ship.name=document.getElementById('inp-ship-name').value.trim();
+  S.ship.route=document.getElementById('inp-ship-route').value.trim();
+  S.ship.voyage=document.getElementById('inp-ship-voyage').value.trim();
+  S.ship.time=document.getElementById('inp-ship-time').value;
+  document.getElementById('ship-label').textContent=S.ship.name||'Atur Kapal';
+  saveState(); closeModal('modal-ship'); updateDashboard();
+  showToast('✅ Info kapal disimpan','success');
+}
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(m=>
+  m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); })
+);
+
+// ══════════════════════════════════════════
+// GOOGLE SHEETS
+// ══════════════════════════════════════════
+function renderGSPage(){
+  const connected=S.gs.connected;
+  document.getElementById('gs-connected-panel').style.display=connected?'block':'none';
+  document.getElementById('gs-setup-panel').style.display='block';
+  if(connected){
+    document.getElementById('gs-sheet-name-display').textContent=S.gs.name||S.gs.url.substring(0,60)+'...';
+    document.getElementById('gs-last-sync').textContent='Sync terakhir: '+(S.gs.lastSync||'Belum pernah');
+    document.getElementById('gs-url-input').value=S.gs.url;
+    document.getElementById('gs-name-input').value=S.gs.name;
+  }
+  updateGSDot();
+  // Toggle state
+  const tog=document.getElementById('auto-sync-toggle');
+  tog.checked=S.gs.autoSync;
+  const span=document.getElementById('toggle-span');
+  span.style.background=S.gs.autoSync?'var(--green)':'var(--gray-200)';
+  tog.onchange=()=>{
+    S.gs.autoSync=tog.checked;
+    span.style.background=tog.checked?'var(--green)':'var(--gray-200)';
+    saveState();
+    showToast(tog.checked?'Auto-sync aktif':'Auto-sync nonaktif');
+  };
+}
+
+function updateGSDot(){
+  const dot=document.getElementById('sync-dot');
+  const bar=document.getElementById('gs-status-bar');
+  const txt=document.getElementById('gs-status-text');
+  if(S.gs.connected){
+    dot.className='sync-dot ok';
+    bar.className='sync-bar connected';
+    txt.textContent='Terhubung ke Google Sheets · '+( S.gs.name||'—');
+  } else {
+    dot.className='sync-dot';
+    bar.className='sync-bar disconnected';
+    txt.textContent='Belum terhubung ke Google Sheets';
+  }
+}
+
+// ── GOOGLE SHEETS: Teknik pengiriman data ──
+// Google Apps Script hanya menerima POST dengan content-type text/plain
+// (bukan application/json) karena CORS preflight tidak di-support.
+// Solusi: kirim sebagai text/plain tapi isi body tetap JSON string.
+// Apps Script membaca e.postData.contents seperti biasa.
+
+async function gsPost(data){
+  if(!S.gs.connected||!S.gs.url) throw new Error('Tidak terhubung');
+  const res = await fetch(S.gs.url, {
+    method: 'POST',
+    // Kunci: text/plain menghindari CORS preflight OPTIONS
+    // Apps Script tetap bisa membaca JSON dari e.postData.contents
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(data),
+    redirect: 'follow',
+  });
+  // Apps Script redirect ke URL baru setelah eksekusi — ikuti redirect
+  if(!res.ok && res.status !== 0) throw new Error('HTTP '+res.status);
+  return res;
+}
+
+// Test koneksi pakai GET (tidak ada CORS masalah untuk GET sederhana)
+async function connectGS(){
+  const url=document.getElementById('gs-url-input').value.trim();
+  const name=document.getElementById('gs-name-input').value.trim();
+  if(!url||!url.includes('script.google.com')){
+    showToast('URL Apps Script tidak valid','error'); return;
+  }
+  showToast('⏳ Menguji koneksi...','warning');
+  try{
+    // GET ke Apps Script tidak kena CORS — digunakan untuk tes ping
+    const res = await fetch(url+'?action=ping', { redirect:'follow' });
+    const json = await res.json();
+    if(json.ok){
+      S.gs.url=url; S.gs.name=name||'Google Sheets'; S.gs.connected=true;
+      saveState(); renderGSPage(); updateGSDot();
+      showToast('✅ Terhubung ke Google Sheets!','success');
+    } else {
+      showToast('Koneksi gagal: '+json.msg,'error');
+    }
+  }catch(e){
+    showToast('Gagal terhubung — pastikan URL benar dan sudah di-deploy','error');
+  }
+}
+
+function disconnectGS(){
+  if(!confirm('Putus koneksi Google Sheets?')) return;
+  S.gs.connected=false; S.gs.autoSync=false;
+  saveState(); renderGSPage(); updateGSDot();
+  showToast('Koneksi diputus');
+}
+
+async function syncNow(){
+  if(!S.gs.connected){showToast('Belum terhubung','error');return;}
+  if(!S.scanLog.length){showToast('Belum ada data scan untuk disync','warning');return;}
+  showToast('🔄 Sync sedang berjalan...','warning');
+  document.getElementById('sync-dot').className='sync-dot syncing';
+  try{
+    // Kirim log satu per satu (Apps Script tidak support batch row insert besar)
+    const toSync = S.scanLog.slice(0, 100);
+    for(const entry of toSync){
+      await gsPost({
+        action:'addLog',
+        ...entry,
+        shipName: S.ship.name,
+        voyage: S.ship.voyage,
+      });
+    }
+    S.gs.lastSync=new Date().toLocaleString('id-ID');
+    saveState();
+    const el=document.getElementById('gs-last-sync');
+    if(el) el.textContent='Sync terakhir: '+S.gs.lastSync;
+    updateGSDot();
+    showToast('✅ Sync '+toSync.length+' data berhasil','success');
+  }catch(e){
+    updateGSDot();
+    showToast('Sync gagal: '+e.message,'error');
+  }
+}
+
+async function syncManifes(){
+  if(!S.gs.connected){showToast('Belum terhubung','error');return;}
+  if(!S.manifest.length){showToast('Belum ada manifes','warning');return;}
+  showToast('🔄 Upload manifes ('+S.manifest.length+' baris)...','warning');
+  try{
+    const isPerintis=S.shipType==='perintis';
+    const headers=isPerintis
+      ?['Nama Kapal','No Tiket','Pel. Awal','Pel. Tujuan','Tgl Etd','Nama Pnp','Jen. Kelamin','Kategori','Status']
+      :['NO_TIKET','NAMA','KELAS','KABIN','TUJUAN','JEN_KELAMIN','USIA','NO_IDENTITAS','Status'];
+    const rows=S.manifest.map(p=>isPerintis
+      ?[p['Nama Kapal']||'',p['No Tiket']||p.NO_TIKET||'',p['Pel. Awal']||'',
+        p['Pel. Tujuan']||'',p['Tgl Etd']||'',p['Nama Pnp']||'',
+        p['Jen. Kelamin']||'',p['Kategori']||'',p._status||'pending']
+      :[p.NO_TIKET||'',p.NAMA||p['Nama Pnp']||'',p.KELAS||'',p.KABIN||'',
+        p.TUJUAN||p['Pel. Tujuan']||'',p.JEN_KELAMIN||p['Jen. Kelamin']||'',
+        p.USIA||'',p.NO_IDENTITAS||'',p._status||'pending']
+    );
+    await gsPost({action:'uploadManifes',headers,rows});
+    showToast('✅ Manifes '+S.manifest.length+' penumpang berhasil diupload','success');
+  }catch(e){
+    showToast('Upload manifes gagal: '+e.message,'error');
+  }
+}
+
+function saveSettings(){ saveState(); }
+
+function resetAppData(){
+  if(!confirm('Reset semua data? (Manifes, Log Scan, Transit, Alert akan dihapus. Pengaturan kapal & Google Sheets tetap disimpan.)')) return;
+  S.manifest=[];
+  S.scanLog=[];
+  S.transitLog=[];
+  S.lanjutanLog=[];
+  S.dupAlerts=[];
+  saveState();
+  updateDashboard();
+  renderManifestTable();
+  renderTransitList();
+  renderLog();
+  document.getElementById('manifest-table-card').style.display='none';
+  document.getElementById('manifest-summary').style.display='none';
+  showToast('✅ Data berhasil direset','success');
+}
+
+// ══════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════
+let toastTimer;
+function showToast(msg,type=''){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show'+(type?' '+type:'');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+// ══════════════════════════════════════════
+// DRAG & DROP
+// ══════════════════════════════════════════
+const uz=document.getElementById('upload-zone');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag')});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag'));
+uz.addEventListener('drop',e=>{
+  e.preventDefault();uz.classList.remove('drag');
+  const f=e.dataTransfer.files[0];
+  if(f) handleUpload({target:{files:[f],value:''}});
+});
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+setShipType(S.shipType);
+if(S.ship.name) document.getElementById('ship-label').textContent=S.ship.name;
+if(S.manifest.length){ document.getElementById('manifest-summary').style.display='block'; document.getElementById('manifest-table-card').style.display='block'; updateManifestSummary(); }
+setScanMode(S.scanMode||'camera');
+if(!S.currentPos || !['F1','F2'].includes(S.currentPos)) S.currentPos='F1';
+setPos(S.currentPos);
+updateDashCounters();
+updateGSDot();
+updateTrStats();
+updateManifesStatusUI();
+
+// Jika URL sudah di-hardcode, inject ke state
+if(GS_APPS_SCRIPT_URL){
+  S.gs.url = GS_APPS_SCRIPT_URL;
+  S.gs.connected = true;
+  S.gs.autoSync = true;
+  updateGSDot();
+  // Sembunyikan input URL di halaman GS
+  const infoBox = document.getElementById('gs-url-hardcoded-info');
+  const urlInput = document.getElementById('inp-gs-url');
+  if(infoBox) infoBox.style.display='block';
+  if(urlInput){ urlInput.value=GS_APPS_SCRIPT_URL; urlInput.style.display='none'; }
+}
+
+// Tampilkan login screen (selalu minta login saat buka app)
+document.getElementById('login-screen').style.display='flex';
+</script>
+</body>
+</html>
