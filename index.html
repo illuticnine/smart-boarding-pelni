@@ -1187,11 +1187,12 @@ function loadState(){
       }
     }
   }catch(e){}
-  // Jika URL sudah di-hardcode di konstanta, selalu override localStorage
-  if(GS_APPS_SCRIPT_URL){
-    S.gs.url = GS_APPS_SCRIPT_URL;
+  // GS_APPS_SCRIPT_URL konstanta SELALU override localStorage
+  // (termasuk override nilai kosong '' dari localStorage lama)
+  if(GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim() !== ''){
+    S.gs.url       = GS_APPS_SCRIPT_URL.trim();
     S.gs.connected = true;
-    S.gs.autoSync = true;
+    S.gs.autoSync  = true;
   }
 }
 function saveState(){
@@ -1985,10 +1986,13 @@ async function autoInitPetugas(){
   }
 
   // Belum ada — tarik otomatis dari Sheets
-  if(!S.gs.url){
-    showToast('⚠️ URL Google Sheets belum dikonfigurasi','warning');
+  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
+  if(!gsUrl){
+    showToast('⚠️ URL Google Sheets belum dikonfigurasi · Hubungi Admin','warning');
     return;
   }
+  // Pastikan state ter-update
+  if(gsUrl){ S.gs.url=gsUrl; S.gs.connected=true; }
 
   showToast('⏳ Memuat manifes dari Google Sheets...','warning');
   try{
@@ -2026,10 +2030,12 @@ function logout(){
 
 // ── Fetch manifes terpusat ──────────────────────────
 async function fetchManifesFromGS(){
-  if(!S.gs.url) throw new Error('URL Google Sheets belum dikonfigurasi');
+  // Pakai konstanta langsung (prioritas) atau fallback ke state
+  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
+  if(!gsUrl) throw new Error('URL Google Sheets belum dikonfigurasi · Hubungi Admin');
   let res;
   try{
-    res = await fetch(S.gs.url+'?action=getManifes&t='+Date.now(),{
+    res = await fetch(gsUrl+'?action=getManifes&t='+Date.now(),{
       method:'GET', redirect:'follow', cache:'no-store'
     });
   }catch(netErr){
@@ -3082,6 +3088,14 @@ uz.addEventListener('drop',e=>{
 // ══════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════
+
+// Inject URL konstanta sebelum apapun dijalankan
+if(GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim() !== ''){
+  S.gs.url       = GS_APPS_SCRIPT_URL.trim();
+  S.gs.connected = true;
+  S.gs.autoSync  = true;
+}
+
 setShipType(S.shipType);
 if(S.ship.name) document.getElementById('ship-label').textContent=S.ship.name;
 if(S.manifest.length){ document.getElementById('manifest-summary').style.display='block'; document.getElementById('manifest-table-card').style.display='block'; updateManifestSummary(); }
