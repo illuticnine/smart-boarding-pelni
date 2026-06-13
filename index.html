@@ -885,11 +885,16 @@ function doGet(e) {
 
   // Ambil data manifes (untuk load dari perangkat petugas)
   if (action === 'getManifes') {
-    const sh = SS.getSheetByName('Manifes');
-    if (!sh || sh.getLastRow() < 2) {
-      return makeResponse({ ok: false, msg: 'Sheet Manifes kosong', rows: [] });
+    try {
+      const sh = SS.getSheetByName('Manifes');
+      if (!sh || sh.getLastRow() < 2) {
+        return makeResponse({ ok: false, msg: 'Sheet Manifes kosong — Admin belum upload manifes', rows: [] });
+      }
+      const rows = sh.getDataRange().getValues();
+      return makeResponse({ ok: true, rows: rows });
+    } catch(err) {
+      return makeResponse({ ok: false, msg: 'Error: ' + err.message, rows: [] });
     }
-    return makeResponse({ ok: true, rows });
   }
 
   return makeResponse({ ok: false, msg: 'Action tidak dikenal' });
@@ -1985,48 +1990,13 @@ async function autoInitPetugas(){
     return;
   }
 
-  showToast('⏳ Memuat manifes...','warning');
+  showToast('⏳ Memuat manifes dari Google Sheets...','warning');
   try{
-    const url = S.gs.url + '?action=getManifes&t='+Date.now();
-    const res = await fetch(url);
-    const data = await res.json();
-    if(!data.ok || !data.rows || data.rows.length < 2)
-      throw new Error(data.msg||'Data manifes kosong');
-
-    const rows = data.rows;
-    const headers = rows[0].map(h=>String(h).trim());
-
-    // Deteksi tipe kapal
-    const isPerintis = headers.some(h=>['Nama Pnp','Kategori','Tgl Etd','No Tiket'].includes(h));
-    const tipeKapal  = isPerintis ? 'perintis' : 'penumpang';
-    const hasTicket  = headers.some(h=>['No Tiket','NO_TIKET'].includes(h));
-    if(!hasTicket) throw new Error('Format manifes tidak dikenali · Pastikan Admin sudah upload manifes terbaru');
-
-    const manifest = rows.slice(1)
-      .filter(r=>r.some(c=>c!==''))
-      .map(row=>{ const o={}; headers.forEach((h,i)=>o[h]=row[i]||''); return o; })
-      .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
-
-    if(!manifest.length) throw new Error('Tidak ada data penumpang');
-
-    const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
-
-    S.manifest = manifest;
-    S.shipType = tipeKapal;
-    if(namaKapal){ S.ship.name=namaKapal; document.getElementById('ship-label').textContent=namaKapal; }
-    setManifesLoadTime();
-    saveState();
-    setShipType(tipeKapal);
-    updateManifestSummary();
-    renderManifestTable();
-    document.getElementById('manifest-summary').style.display='block';
-    document.getElementById('manifest-table-card').style.display='block';
-    updateDashCounters();
-    updateManifesStatusUI();
-    showToast('✅ '+manifest.length+' penumpang siap di-boarding','success');
-
+    const result = await fetchManifesFromGS();
+    applyManifesToState(result);
+    showToast('✅ '+result.manifest.length+' penumpang siap di-boarding','success');
   }catch(err){
-    showToast('❌ Gagal muat manifes: '+err.message,'error');
+    showToast('❌ '+err.message,'error');
   }
 }
 
@@ -2051,6 +2021,53 @@ function logout(){
     const tab=document.getElementById('tab-'+p);
     if(tab && p!=='transit') tab.style.display='';
   });
+}
+
+
+// ── Fetch manifes terpusat ──────────────────────────
+async function fetchManifesFromGS(){
+  if(!S.gs.url) throw new Error('URL Google Sheets belum dikonfigurasi');
+  let res;
+  try{
+    res = await fetch(S.gs.url+'?action=getManifes&t='+Date.now(),{
+      method:'GET', redirect:'follow', cache:'no-store'
+    });
+  }catch(netErr){
+    throw new Error('Tidak dapat terhubung · Periksa koneksi internet');
+  }
+  if(!res.ok) throw new Error('Server error: HTTP '+res.status);
+  let data;
+  try{ data = JSON.parse(await res.text()); }
+  catch(e){ throw new Error('Response tidak valid dari Google Sheets'); }
+  if(!data.ok) throw new Error(data.msg||'Gagal mengambil data dari Sheets');
+  if(!data.rows||data.rows.length<2) throw new Error('Sheet Manifes kosong — Admin belum upload manifes');
+
+  const headers  = data.rows[0].map(h=>String(h).trim());
+  const hasTicket = headers.some(h=>['No Tiket','NO_TIKET'].includes(h));
+  if(!hasTicket) throw new Error('Format manifes tidak dikenali · Upload ulang manifes dari akun Admin');
+  const isPerintis = headers.some(h=>['Nama Pnp','Kategori','Tgl Etd','No Tiket'].includes(h));
+  const tipeKapal  = isPerintis ? 'perintis' : 'penumpang';
+  const manifest   = data.rows.slice(1)
+    .filter(r=>r.some(c=>c!==''))
+    .map(row=>{ const o={}; headers.forEach((h,i)=>o[h]=row[i]||''); return o; })
+    .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
+  if(!manifest.length) throw new Error('Tidak ada data penumpang yang valid');
+  const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
+  return { manifest, tipeKapal, namaKapal };
+}
+
+function applyManifesToState({manifest, tipeKapal, namaKapal}){
+  S.manifest = manifest; S.shipType = tipeKapal;
+  if(namaKapal){
+    S.ship.name = namaKapal;
+    const lbl = document.getElementById('ship-label');
+    if(lbl) lbl.textContent = namaKapal;
+  }
+  setManifesLoadTime(); saveState();
+  setShipType(tipeKapal); updateManifestSummary(); renderManifestTable();
+  document.getElementById('manifest-summary').style.display='block';
+  document.getElementById('manifest-table-card').style.display='block';
+  updateDashCounters(); updateManifesStatusUI();
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
