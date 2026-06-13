@@ -1131,12 +1131,12 @@ function getOrCreateSheet(name, headers) {
 // ╔══════════════════════════════════════════════════════════════╗
 // ║  KONFIGURASI DEPLOYMENT — ISI SEBELUM DEPLOY KE NETLIFY     ║
 // ╚══════════════════════════════════════════════════════════════╝
-const GS_APPS_SCRIPT_URL = '';  // ← PASTE URL APPS SCRIPT DI SINI
+const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyYODnEvxINSO3JjdNI7vsfQbDNUQ7hTg3rnhT4sl_9bE-VlBWNBffKYHPVvjY9FaQ/exec';  // ← PASTE URL APPS SCRIPT DI SINI
 const APP_VERSION = 'v2.0';
 
 // PIN PER ROLE — ganti sesuai kebutuhan sebelum deploy
 const PINS = {
-  admin : '1234',   // ← ganti PIN Admin
+  admin : 'admin',   // ← ganti PIN Admin
   f1    : '1111',   // ← ganti PIN Petugas F1 (Trestle)
   f2    : '2222',   // ← ganti PIN Petugas F2 (Tangga Kapal)
 };
