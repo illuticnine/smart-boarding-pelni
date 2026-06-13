@@ -1131,7 +1131,7 @@ function getOrCreateSheet(name, headers) {
 // ╔══════════════════════════════════════════════════════════════╗
 // ║  KONFIGURASI DEPLOYMENT — ISI SEBELUM DEPLOY KE NETLIFY     ║
 // ╚══════════════════════════════════════════════════════════════╝
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyYODnEvxINSO3JjdNI7vsfQbDNUQ7hTg3rnhT4sl_9bE-VlBWNBffKYHPVvjY9FaQ/exec';  // ← PASTE URL APPS SCRIPT DI SINI
+const GS_APPS_SCRIPT_URL = '';  // ← PASTE URL APPS SCRIPT DI SINI
 const APP_VERSION = 'v2.0';
 
 // PIN PER ROLE — ganti sesuai kebutuhan sebelum deploy
@@ -2996,13 +2996,15 @@ async function syncManifes(){
   try{
     const isPerintis=S.shipType==='perintis';
     const headers=isPerintis
-      ?['Nama Kapal','No Tiket','Pel. Awal','Pel. Tujuan','Tgl Etd','Nama Pnp','Jen. Kelamin','Kategori','Status']
-      :['NO_TIKET','NAMA','KELAS','KABIN','TUJUAN','JEN_KELAMIN','USIA','NO_IDENTITAS','Status'];
+      ?['Nama Kapal','No Tiket','Pel. Asal','Pel. Tujuan','Tgl Etd','Nama Pnp','Jen. Kelamin','Kategori','Status']
+      :['NO_TIKET','NAMA','KELAS','ASAL','TUJUAN','JEN_KELAMIN','USIA','NO_IDENTITAS','Status'];
     const rows=S.manifest.map(p=>isPerintis
-      ?[p['Nama Kapal']||'',p['No Tiket']||p.NO_TIKET||'',p['Pel. Awal']||'',
+      ?[p['Nama Kapal']||'',p['No Tiket']||p.NO_TIKET||'',
+        p['Pel. Awal']||p['Pel. Asal']||'',
         p['Pel. Tujuan']||'',p['Tgl Etd']||'',p['Nama Pnp']||'',
         p['Jen. Kelamin']||'',p['Kategori']||'',p._status||'pending']
-      :[p.NO_TIKET||'',p.NAMA||p['Nama Pnp']||'',p.KELAS||'',p.KABIN||'',
+      :[p.NO_TIKET||'',p.NAMA||p['Nama Pnp']||'',p.KELAS||'',
+        p.ASAL||p['Pel. Awal']||'',
         p.TUJUAN||p['Pel. Tujuan']||'',p.JEN_KELAMIN||p['Jen. Kelamin']||'',
         p.USIA||'',p.NO_IDENTITAS||'',p._status||'pending']
     );
