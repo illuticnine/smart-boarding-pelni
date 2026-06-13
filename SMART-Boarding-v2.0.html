@@ -1723,6 +1723,13 @@ async function perbaruiManifes(){
 
     const rows    = data.rows;
     const headers = rows[0].map(h=>String(h).trim());
+
+    // Deteksi tipe kapal
+    const isPerintis = headers.some(h=>['Nama Pnp','Kategori','Tgl Etd','No Tiket'].includes(h));
+    const tipeKapal  = isPerintis ? 'perintis' : 'penumpang';
+    const hasTicket  = headers.some(h=>['No Tiket','NO_TIKET'].includes(h));
+    if(!hasTicket) throw new Error('Format manifes tidak dikenali · Pastikan Admin sudah upload manifes terbaru');
+
     const manifest = rows.slice(1)
       .filter(r=>r.some(c=>c!==''))
       .map(row=>{ const o={}; headers.forEach((h,i)=>o[h]=row[i]||''); return o; })
@@ -1731,8 +1738,6 @@ async function perbaruiManifes(){
     if(!manifest.length) throw new Error('Tidak ada data penumpang yang valid');
 
     const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
-    const tipeKapal = (headers.includes('Kategori')||headers.includes('KATEGORI'))
-                      ? 'perintis' : 'penumpang';
 
     // Cek apakah ada perubahan
     const prevCount = S.manifest.length;
@@ -1811,33 +1816,27 @@ async function loadManifesFromSheets(){
 
     const rows = data.rows;
     const headers = rows[0].map(h=>String(h).trim());
-    const dataRows = rows.slice(1).filter(r=>r.some(c=>c!==''));
 
-    // Deteksi tipe kapal dari header
-    const isPerintis = headers.includes('No Tiket') || headers.includes('NO_TIKET');
-    const isPenumpang = headers.includes('Nama Pnp') || headers.includes('NAMA_PNP') || headers.includes('NAMA');
-
-    if(!isPerintis && !isPenumpang){
-      throw new Error('Format manifes di Sheets tidak dikenali');
+    // Deteksi tipe kapal — konsisten dengan header upload
+    const isPerintis = headers.some(h=>['Nama Pnp','Kategori','Tgl Etd','No Tiket'].includes(h));
+    const tipeKapal  = isPerintis ? 'perintis' : 'penumpang';
+    const hasTicket  = headers.some(h=>['No Tiket','NO_TIKET'].includes(h));
+    if(!hasTicket){
+      throw new Error('Format manifes tidak dikenali · Pastikan Admin sudah upload manifes terbaru');
     }
 
     // Konversi ke format objek
-    const manifest = dataRows.map(row=>{
-      const obj={};
-      headers.forEach((h,i)=>{ obj[h]=row[i]||''; });
-      return obj;
-    }).filter(p=>{
-      const noTiket=p['No Tiket']||p['NO_TIKET']||'';
-      return noTiket.toString().trim()!=='';
-    });
+    const manifest = rows.slice(1)
+      .filter(r=>r.some(c=>c!==''))
+      .map(row=>{ const obj={}; headers.forEach((h,i)=>{ obj[h]=row[i]||''; }); return obj; })
+      .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
 
     if(manifest.length===0){
       throw new Error('Tidak ada data penumpang yang valid di Sheets');
     }
 
-    // Deteksi nama kapal dari data
+    // Nama kapal dari data
     const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
-    const tipeKapal = (headers.includes('Kategori')||headers.includes('KATEGORI')) ? 'perintis' : 'penumpang';
 
     S.manifest = manifest;
     S.shipType = tipeKapal;
@@ -1996,6 +1995,13 @@ async function autoInitPetugas(){
 
     const rows = data.rows;
     const headers = rows[0].map(h=>String(h).trim());
+
+    // Deteksi tipe kapal
+    const isPerintis = headers.some(h=>['Nama Pnp','Kategori','Tgl Etd','No Tiket'].includes(h));
+    const tipeKapal  = isPerintis ? 'perintis' : 'penumpang';
+    const hasTicket  = headers.some(h=>['No Tiket','NO_TIKET'].includes(h));
+    if(!hasTicket) throw new Error('Format manifes tidak dikenali · Pastikan Admin sudah upload manifes terbaru');
+
     const manifest = rows.slice(1)
       .filter(r=>r.some(c=>c!==''))
       .map(row=>{ const o={}; headers.forEach((h,i)=>o[h]=row[i]||''); return o; })
@@ -2004,7 +2010,6 @@ async function autoInitPetugas(){
     if(!manifest.length) throw new Error('Tidak ada data penumpang');
 
     const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
-    const tipeKapal = (headers.includes('Kategori')||headers.includes('KATEGORI')) ? 'perintis' : 'penumpang';
 
     S.manifest = manifest;
     S.shipType = tipeKapal;
