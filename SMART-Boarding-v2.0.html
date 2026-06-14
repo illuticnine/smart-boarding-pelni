@@ -522,12 +522,12 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
     </div>
 
-    <div class="divider" style="margin:14px 0">
+    <div class="divider" id="divider-upload" style="margin:14px 0">
       <span style="background:#fff;padding:0 10px;color:var(--gray-400);font-size:11px">atau upload file langsung</span>
     </div>
 
     <!-- OPSI 2: Upload file -->
-    <div class="slabel">📂 Upload File Manifes</div>
+    <div class="slabel" id="label-upload-file">📂 Upload File Manifes</div>
     <label for="file-input">
       <div class="upload-zone" id="upload-zone">
         <div class="upload-icon" id="upload-icon">📂</div>
@@ -1692,10 +1692,12 @@ function updateManifesStatusUI(){
 setInterval(updateManifesStatusUI, 30000);
 
 async function perbaruiManifes(){
-  if(!S.gs.url){
-    showToast('URL Google Sheets belum dikonfigurasi','error');
+  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
+  if(!gsUrl){
+    showToast('URL Google Sheets belum dikonfigurasi · Hubungi Admin','error');
     return;
   }
+  if(gsUrl) S.gs.url = gsUrl; // pastikan state ter-update
 
   // Tampilkan progress bar
   const progress      = document.getElementById('manifes-progress');
@@ -1963,8 +1965,42 @@ function applyRole(role){
     document.getElementById('pos-f2').style.pointerEvents = role==='f2' ? 'none' : '';
   }
 
+  // Sembunyikan/tampilkan elemen manifes sesuai role
+  const isAdmin = role === 'admin';
+
+  // Elemen HANYA untuk Admin
+  const adminOnlyIds = [
+    'upload-zone',        // zona drag & drop upload
+    'file-input',         // input file
+    'label-upload-file',  // label "Upload File Manifes"
+    'divider-upload',     // divider "atau upload file langsung"
+    'manifes-empty-box',  // kotak muat pertama kali (petugas pakai auto-load)
+  ];
+  adminOnlyIds.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = isAdmin ? '' : 'none';
+  });
+
+  // Tombol Hapus manifes - hanya Admin
+  const btnHapus = document.querySelector('button[onclick="clearManifest()"]');
+  if(btnHapus) btnHapus.style.display = isAdmin ? '' : 'none';
+
+  // Tombol Export Log - semua bisa
+  // Tombol Perbarui - semua bisa (sudah ada)
+
+  // Divider "atau upload file langsung" - hanya Admin
+  const dividers = document.querySelectorAll('.divider');
+  dividers.forEach(d=>{
+    if(d.textContent && d.textContent.includes('upload file')) {
+      d.style.display = isAdmin ? '' : 'none';
+    }
+  });
+
+  // Label "Upload File Manifes" - hanya Admin
+  const uploadLabel = document.querySelector('#load-from-sheets-box .slabel:last-of-type');
+
   // Auto-load manifes untuk petugas
-  if(role !== 'admin'){
+  if(!isAdmin){
     autoInitPetugas();
   }
 
