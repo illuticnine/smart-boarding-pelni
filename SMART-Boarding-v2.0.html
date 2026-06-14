@@ -2025,15 +2025,21 @@ async function autoInitPetugas(){
   }
 
   // Belum ada — tarik otomatis dari Sheets
-  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
+  const gsUrl = (GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim())
+                || (S.gs.url && S.gs.url.trim())
+                || '';
+
   if(!gsUrl){
-    showToast('⚠️ URL Google Sheets belum dikonfigurasi · Hubungi Admin','warning');
+    // URL belum dikonfigurasi — tampilkan form input darurat
+    showUrlInputDialog();
     return;
   }
-  // Pastikan state ter-update
-  if(gsUrl){ S.gs.url=gsUrl; S.gs.connected=true; }
 
-  showToast('⏳ Memuat manifes dari Google Sheets...','warning');
+  // Pastikan state ter-update dengan URL yang valid
+  S.gs.url = gsUrl;
+  S.gs.connected = true;
+
+  showToast('⏳ Memuat manifes...','warning');
   try{
     const result = await fetchManifesFromGS();
     applyManifesToState(result);
@@ -2113,6 +2119,89 @@ function applyManifesToState({manifest, tipeKapal, namaKapal}){
   document.getElementById('manifest-summary').style.display='block';
   document.getElementById('manifest-table-card').style.display='block';
   updateDashCounters(); updateManifesStatusUI();
+}
+
+
+// ── Dialog input URL darurat (jika URL belum di-hardcode) ──
+function showUrlInputDialog(){
+  // Cek apakah sudah ada dialog
+  if(document.getElementById('url-input-dialog')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'url-input-dialog';
+  overlay.style.cssText = [
+    'position:fixed','top:0','right:0','bottom:0','left:0',
+    'z-index:10000','background:rgba(0,0,0,.7)',
+    'display:flex','align-items:center','justify-content:center',
+    'padding:20px','box-sizing:border-box'
+  ].join(';');
+
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;
+                width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+      <div style="font-size:16px;font-weight:700;color:#1565C0;margin-bottom:8px">
+        ⚙️ Konfigurasi Google Sheets
+      </div>
+      <div style="font-size:12px;color:#666;margin-bottom:16px;line-height:1.6">
+        URL Google Sheets belum dikonfigurasi di file aplikasi.<br>
+        Masukkan URL Apps Script untuk melanjutkan, atau hubungi Admin.
+      </div>
+      <label style="font-size:11px;font-weight:600;color:#333;display:block;margin-bottom:6px">
+        URL Google Apps Script
+      </label>
+      <input type="url" id="dialog-gs-url"
+        placeholder="https://script.google.com/macros/s/.../exec"
+        style="width:100%;box-sizing:border-box;padding:10px 12px;
+               border:2px solid #e0e0e0;border-radius:8px;
+               font-size:12px;outline:none;margin-bottom:12px"
+        value="${S.gs.url||''}"
+        onfocus="this.style.borderColor='#1565C0'"
+        onblur="this.style.borderColor='#e0e0e0'"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button onclick="document.getElementById('url-input-dialog').remove()"
+          style="padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;
+                 background:#fff;color:#666;font-size:13px;cursor:pointer">
+          Batal
+        </button>
+        <button onclick="applyUrlFromDialog()"
+          style="padding:10px;border:none;border-radius:8px;
+                 background:#1565C0;color:#fff;font-size:13px;
+                 font-weight:700;cursor:pointer">
+          Simpan & Muat
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  setTimeout(()=>{ const inp=document.getElementById('dialog-gs-url'); if(inp) inp.focus(); },300);
+}
+
+async function applyUrlFromDialog(){
+  const inp = document.getElementById('dialog-gs-url');
+  const url = inp ? inp.value.trim() : '';
+  if(!url || !url.startsWith('http')){
+    inp.style.borderColor='#c62828';
+    inp.placeholder='URL tidak valid — harus diawali https://';
+    return;
+  }
+  // Simpan URL
+  S.gs.url = url;
+  S.gs.connected = true;
+  S.gs.autoSync = true;
+  saveState();
+  // Tutup dialog
+  const dlg = document.getElementById('url-input-dialog');
+  if(dlg) dlg.remove();
+  // Lanjut load manifes
+  showToast('⏳ Memuat manifes...','warning');
+  try{
+    const result = await fetchManifesFromGS();
+    applyManifesToState(result);
+    showToast('✅ '+result.manifest.length+' penumpang siap di-boarding','success');
+  }catch(err){
+    showToast('❌ '+err.message,'error');
+    showUrlInputDialog(); // Buka lagi kalau gagal
+  }
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
