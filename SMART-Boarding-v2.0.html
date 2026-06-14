@@ -202,7 +202,7 @@ tr:hover td{background:var(--gray-50)}
   font-size:11px;font-family:monospace;line-height:1.7;overflow-x:auto;margin-top:8px;white-space:pre}
 
 /* MODAL */
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(10,35,66,.55);
+.modal-bg{display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(10,35,66,.55);
   z-index:200;align-items:center;justify-content:center;padding:16px}
 .modal-bg.open{display:flex}
 .modal{background:#fff;border-radius:var(--r);padding:22px;width:100%;max-width:440px;animation:slideUp .25s}
@@ -263,10 +263,14 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 <!-- ═══════════════════ LOGIN PAGE ═══════════════════ -->
 <div id="login-screen" style="
-  position:fixed;inset:0;z-index:9999;
+  position:fixed;top:0;right:0;bottom:0;left:0;z-index:9999;
+  background:-webkit-linear-gradient(135deg,#0D2137 0%,#1565C0 100%);
   background:linear-gradient(135deg,#0D2137 0%,#1565C0 100%);
+  display:-webkit-flex;
   display:flex;align-items:center;justify-content:center;
   font-family:inherit;
+  -webkit-overflow-scrolling:touch;
+  overflow-y:auto;
 ">
   <div style="width:100%;max-width:380px;padding:24px">
 
@@ -1059,7 +1063,7 @@ function getOrCreateSheet(name, headers) {
       </div>
       <label style="position:relative;display:inline-block;width:42px;height:24px">
         <input type="checkbox" id="auto-sync-toggle" style="opacity:0;width:0;height:0" onchange="saveSettings()">
-        <span id="toggle-span" style="position:absolute;cursor:pointer;inset:0;background:var(--gray-200);border-radius:99px;transition:.3s"></span>
+        <span id="toggle-span" style="position:absolute;cursor:pointer;top:0;right:0;bottom:0;left:0;background:var(--gray-200);border-radius:99px;transition:.3s"></span>
       </label>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
@@ -1198,7 +1202,6 @@ function loadState(){
 function saveState(){
   try{ localStorage.setItem('smart2',JSON.stringify(S)); }catch(e){}
 }
-loadState();
 
 // ══════════════════════════════════════════
 // SHIP TYPE
@@ -3122,8 +3125,11 @@ uz.addEventListener('drop',e=>{
 });
 
 // ══════════════════════════════════════════
-// INIT
+// INIT — dibungkus DOMContentLoaded agar DOM pasti siap di Android
 // ══════════════════════════════════════════
+function initApp(){
+// Load state dari localStorage
+loadState();
 
 // Inject URL konstanta sebelum apapun dijalankan
 if(GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim() !== ''){
@@ -3157,7 +3163,16 @@ if(GS_APPS_SCRIPT_URL){
 }
 
 // Tampilkan login screen (selalu minta login saat buka app)
-document.getElementById('login-screen').style.display='flex';
+const ls = document.getElementById('login-screen');
+if(ls) ls.style.display='flex';
+} // end initApp
+
+// Jalankan saat DOM siap — penting untuk Android Chrome
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp(); // DOM sudah siap
+}
 </script>
 </body>
 </html>
