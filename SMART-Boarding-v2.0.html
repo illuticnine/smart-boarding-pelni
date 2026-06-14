@@ -1205,6 +1205,30 @@ function getOrCreateSheet(name, headers) {
     </div>
   </div>
 
+  <!-- Reset Data Card -->
+  <div class="card">
+    <div class="card-title">
+      <div class="cticon" style="background:#FCE4EC">🗑</div>Reset Data Aplikasi
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <button class="btn" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFB300;
+                                  padding:12px 8px;font-size:13px;font-weight:700"
+              onclick="resetScanOnly()">
+        🔄 Reset Log Scan
+      </button>
+      <button class="btn" style="background:#FFEBEE;color:#C62828;border:1.5px solid #EF9A9A;
+                                  padding:12px 8px;font-size:13px;font-weight:700"
+              onclick="resetAllData()">
+        🗑 Reset Semua + Manifes
+      </button>
+    </div>
+    <div style="font-size:11px;color:var(--gray-500);line-height:1.8;
+                background:var(--gray-50);padding:10px;border-radius:8px">
+      <div>🔄 <b>Reset Log Scan</b> — hapus riwayat scan & status boarding. Manifes tetap.</div>
+      <div>🗑 <b>Reset Semua + Manifes</b> — hapus semua data. Upload manifes ulang diperlukan.</div>
+    </div>
+  </div>
+
   <!-- Troubleshooting -->
   <div class="card">
     <div class="card-title"><div class="cticon" style="background:#FFEBEE">🔧</div>Troubleshooting Koneksi</div>
@@ -1214,20 +1238,7 @@ function getOrCreateSheet(name, headers) {
         Penyebab paling umum adalah pengaturan deploy yang salah di Apps Script.
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <button class="btn btn-sm" style="background:#FFF8E1;color:#F57F17;border:1px solid #FFE082"
-                onclick="resetScanOnly()">
-          🔄 Reset Log Scan
-        </button>
-        <button class="btn btn-sm" style="background:var(--red-lt);color:var(--red)"
-                onclick="resetAllData()">
-          🗑 Reset Semua + Manifes
-        </button>
-      </div>
-      <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px;line-height:1.6">
-        <b>Reset Log Scan</b> — hapus riwayat scan & status boarding, manifes tetap.<br>
-        <b>Reset Semua + Manifes</b> — hapus semua data termasuk manifes (mulai dari awal).
-      </div>
+
       <b>Checklist wajib:</b>
       <div style="margin:8px 0 0 4px">
         ☐ &nbsp;<b>Who has access</b> diset ke <i>Anyone</i> (bukan "Anyone with Google account")<br>
