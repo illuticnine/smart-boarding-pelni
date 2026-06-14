@@ -2362,13 +2362,8 @@ async function sbUploadManifes(manifest, tipeKapal){
   if(!sb) return false;
   const sesiId = getSesiId();
   try{
-    // Arsip scan_log sesi ini dulu
-    await sbArsipScanLog(sesiId);
-
-    // Hapus manifes lama untuk sesi ini
-    await sb.from('manifes').delete().eq('sesi_id', sesiId);
-
-    // Insert manifes baru dalam batch 50 baris
+    // ── UPSERT: tambah penumpang baru + update yang sudah ada ──
+    // Scan log TIDAK dihapus — status boarding tetap terjaga
     const rows = manifest.map(p => ({
       sesi_id     : sesiId,
       no_tiket    : (p['No Tiket']||p.NO_TIKET||'').toString().trim(),
@@ -2385,16 +2380,40 @@ async function sbUploadManifes(manifest, tipeKapal){
       nama_kapal  : p['Nama Kapal']||S.ship.name||'',
       tipe_kapal  : tipeKapal,
       status      : p._status||'pending',
-    }));
+    })).filter(r => r.no_tiket !== '');
 
-    // Batch insert 50 per request
-    for(let i=0; i<rows.length; i+=50){
-      const batch = rows.slice(i, i+50);
+    // Ambil tiket yang sudah ada di database untuk sesi ini
+    const { data: existing } = await sb
+      .from('manifes')
+      .select('no_tiket')
+      .eq('sesi_id', sesiId);
+
+    const existingSet = new Set((existing||[]).map(r => r.no_tiket));
+
+    // Pisahkan: yang baru vs yang sudah ada
+    const toInsert = rows.filter(r => !existingSet.has(r.no_tiket));
+    const toUpdate = rows.filter(r =>  existingSet.has(r.no_tiket));
+
+    let insertCount = 0, updateCount = 0;
+
+    // Insert penumpang baru - batch 50
+    for(let i=0; i<toInsert.length; i+=50){
+      const batch = toInsert.slice(i, i+50);
       const { error } = await sb.from('manifes').insert(batch);
       if(error) throw error;
+      insertCount += batch.length;
     }
 
-    // Catat sesi kapal
+    // Update penumpang yang sudah ada (data berubah) - batch 50
+    for(let i=0; i<toUpdate.length; i+=50){
+      const batch = toUpdate.slice(i, i+50);
+      const { error } = await sb.from('manifes')
+        .upsert(batch, { onConflict: 'sesi_id,no_tiket' });
+      if(error) throw error;
+      updateCount += batch.length;
+    }
+
+    // Catat/update sesi kapal
     await sb.from('sesi_kapal').upsert({
       sesi_id    : sesiId,
       nama_kapal : S.ship.name||'',
@@ -2403,12 +2422,15 @@ async function sbUploadManifes(manifest, tipeKapal){
       status     : 'aktif',
     }, { onConflict: 'sesi_id' });
 
-    return true;
+    console.log(`[SB] Upload selesai: ${insertCount} baru, ${updateCount} diupdate`);
+    return { ok: true, insertCount, updateCount };
+
   }catch(e){
     console.error('[SB] uploadManifes error:', e.message);
     return false;
   }
 }
+
 
 async function sbGetManifes(){
   if(!sb) throw new Error('Supabase belum dikonfigurasi');
@@ -2700,12 +2722,17 @@ async function handleUpload(e){
       // Otomatis upload ke Supabase
       if(sb){
         showToast('⏳ Menyimpan ke database Supabase...','warning');
-        const ok = await sbUploadManifes(S.manifest, S.shipType);
-        if(ok){
-          showToast(`✅ ${S.manifest.length} penumpang tersimpan ke database · ScanLog lama diarsip`,'success');
-          // Reset scan log lokal
-          S.scanLog=[]; S.dupAlerts=[];
-          S.manifest.forEach(p=>{ p._status='pending'; });
+        const result = await sbUploadManifes(S.manifest, S.shipType);
+        if(result){
+          const info = result.insertCount > 0
+            ? `✅ ${result.insertCount} penumpang baru ditambahkan · ${result.updateCount} diperbarui`
+            : `✅ ${result.updateCount} data penumpang diperbarui`;
+          showToast(info,'success');
+          // Reset scan log lokal HANYA jika ini sesi baru (tidak ada scan sebelumnya)
+          if(S.scanLog.length === 0){
+            S.dupAlerts=[];
+            S.manifest.forEach(p=>{ p._status='pending'; });
+          }
           saveState(); updateDashCounters(); renderLog();
         } else {
           showToast('⚠️ File berhasil dibaca tapi gagal simpan ke database','warning');
@@ -2863,11 +2890,16 @@ async function parsePDF(file){
     // Auto-upload ke Supabase
     if(sb){
       showToast('⏳ Menyimpan ke database...','warning');
-      sbUploadManifes(S.manifest, 'penumpang').then(ok=>{
-        if(ok){
-          showToast('✅ '+S.manifest.length+' penumpang tersimpan ke database','success');
-          S.scanLog=[]; S.dupAlerts=[];
-          S.manifest.forEach(p=>{ p._status='pending'; });
+      sbUploadManifes(S.manifest, 'penumpang').then(result=>{
+        if(result){
+          const info = result.insertCount > 0
+            ? `✅ ${result.insertCount} penumpang baru · ${result.updateCount} diperbarui`
+            : `✅ ${result.updateCount} data penumpang diperbarui`;
+          showToast(info,'success');
+          if(S.scanLog.length === 0){
+            S.dupAlerts=[];
+            S.manifest.forEach(p=>{ p._status='pending'; });
+          }
           saveState(); updateDashCounters(); renderLog();
         } else {
           showToast('⚠️ PDF dibaca tapi gagal simpan ke database','warning');
