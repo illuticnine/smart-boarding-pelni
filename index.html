@@ -1233,7 +1233,7 @@ function getOrCreateSheet(name, headers) {
 // ║                                                                      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzqihEZmtUEH6fKLA3UYy8HhEr-fJOjb2WY5ot-E8j-lUMOXDcW_cBxzhB3fNsfbQ/exec';
+const GS_APPS_SCRIPT_URL = '';
 // ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
 // Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
 
@@ -1978,11 +1978,13 @@ async function loadManifesFromSheets(){
     showToast(`✅ ${manifest.length} penumpang dimuat dari Sheets`,'success');
 
   }catch(err){
-    status.innerHTML=`<span style="color:var(--red)">❌ Gagal: ${err.message}</span>`;
-    btn.textContent='☁️ Muat Manifes dari Google Sheets';
-    showToast('Gagal muat manifes: '+err.message,'error');
-  } finally {
-    btn.disabled = false;
+    clearInterval(ticker);
+    if(progress)    progress.style.display='none';
+    if(progressBar) progressBar.style.width='0%';
+    showToast('❌ Gagal perbarui: '+err.message,'error');
+  }finally{
+    if(btnPerbarui){ btnPerbarui.disabled=false; btnPerbarui.textContent='🔄 Perbarui Data'; }
+    if(btnSummary) { btnSummary.disabled=false;  btnSummary.textContent='🔄 Perbarui'; }
   }
 }
 
@@ -2121,19 +2123,8 @@ function applyRole(role){
 }
 
 async function autoInitPetugas(){
-  // Cek apakah manifes sudah ada di localStorage
-  if(S.manifest.length > 0){
-    // Sudah ada — langsung render
-    updateManifestSummary();
-    renderManifestTable();
-    document.getElementById('manifest-summary').style.display='block';
-    document.getElementById('manifest-table-card').style.display='block';
-    updateDashCounters();
-    showToast('✅ Manifes tersedia · '+S.manifest.length+' penumpang','success');
-    return;
-  }
-
-  // Belum ada — tarik otomatis dari Sheets
+  // Selalu tarik fresh dari Sheets saat login petugas
+  // (agar _status tidak terbawa dari sesi sebelumnya)
   const gsUrl = (GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim())
                 || (S.gs.url && S.gs.url.trim())
                 || '';
@@ -3483,12 +3474,15 @@ async function syncManifes(){
 function saveSettings(){ saveState(); }
 
 function resetAppData(){
-  if(!confirm('Reset semua data? (Manifes, Log Scan, Transit, Alert akan dihapus. Pengaturan kapal & Google Sheets tetap disimpan.)')) return;
-  S.manifest=[];
+  if(!confirm('Reset semua data? (Log Scan, Status Boarding akan direset. Manifes tetap tersimpan, pengaturan kapal & Google Sheets tetap.)')) return;
+  // Reset scan log dan alerts
   S.scanLog=[];
   S.transitLog=[];
   S.lanjutanLog=[];
   S.dupAlerts=[];
+  // Reset _status semua penumpang di manifes ke 'pending'
+  S.manifest.forEach(p=>{ p._status='pending'; });
+  S._manifesLoadedAt = null;
   saveState();
   updateDashboard();
   renderManifestTable();
