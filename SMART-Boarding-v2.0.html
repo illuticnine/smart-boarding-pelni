@@ -385,7 +385,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   </div>
 
   <!-- Ship Type Switcher -->
-  <div class="type-bar">
+  <div class="type-bar ship-type-switcher">
     <span class="type-bar-label">Tipe:</span>
     <div class="type-tab active perintis" id="type-perintis" onclick="setShipType('perintis')">⚓ Kapal Perintis</div>
     <div class="type-tab penumpang" id="type-penumpang" onclick="setShipType('penumpang')">🛳 Kapal Penumpang</div>
@@ -1474,8 +1474,11 @@ function setShipType(t){
   document.getElementById('type-penumpang').className = 'type-tab' + (t==='penumpang'?' active penumpang':'');
   document.getElementById('manifest-type-label').textContent = t==='perintis'?'Kapal Perintis':'Kapal Penumpang';
   document.getElementById('manifest-type-label').className = 'chip '+(t==='perintis'?'ctag-perintis':'ctag-penumpang');
-  document.getElementById('format-perintis').style.display = t==='perintis'?'block':'none';
-  document.getElementById('format-penumpang').style.display = t==='penumpang'?'block':'none';
+  // Hanya tampilkan format info untuk Admin
+  if(currentRole === 'admin' || !currentRole){
+    document.getElementById('format-perintis').style.display = t==='perintis'?'block':'none';
+    document.getElementById('format-penumpang').style.display = t==='penumpang'?'block':'none';
+  }
   document.getElementById('tbl-perintis-wrap').style.display = t==='perintis'?'block':'none';
   document.getElementById('tbl-penumpang-wrap').style.display = t==='penumpang'?'block':'none';
   document.getElementById('dash-kategori').style.display = t==='perintis'?'block':'none';
@@ -1523,7 +1526,15 @@ function showPage(id){
     stopDashAutoRefresh();
   }
   if(id==='log') renderLog();
-  if(id==='manifest'){ renderManifestTable(); refreshLoadSheetsBtn(); updateManifesStatusUI(); }
+  if(id==='manifest'){
+    // Delay kecil memastikan DOM sudah siap setelah role diterapkan
+    setTimeout(()=>{
+      renderManifestTable();
+      refreshLoadSheetsBtn();
+      updateManifesStatusUI();
+      updateManifesStatusUI();
+    }, 50);
+  }
   if(id==='scan') updateInfografis();
   if(id==='transit'){
     renderTransitList();
@@ -2256,6 +2267,8 @@ function applyRole(role){
     'label-upload-file',  // label "Upload File Manifes"
     'divider-upload',     // divider "atau upload file langsung"
     'manifes-empty-box',  // kotak muat pertama kali (petugas pakai auto-load)
+    'format-perintis',    // info format manifes perintis
+    'format-penumpang',   // info format manifes penumpang
   ];
   adminOnlyIds.forEach(id=>{
     const el = document.getElementById(id);
@@ -2437,10 +2450,17 @@ function applyManifesToState({manifest, tipeKapal, namaKapal}){
     if(lbl) lbl.textContent = namaKapal;
   }
   setManifesLoadTime(); saveState();
-  setShipType(tipeKapal); updateManifestSummary(); renderManifestTable();
+  setShipType(tipeKapal);
+  updateManifestSummary();
+  // Delay render agar DOM sudah siap setelah setShipType mengubah display
+  setTimeout(()=>{
+    renderManifestTable();
+    updateManifesStatusUI();
+    updateInfografis();
+  }, 100);
   document.getElementById('manifest-summary').style.display='block';
   document.getElementById('manifest-table-card').style.display='block';
-  updateDashCounters(); updateManifesStatusUI();
+  updateDashCounters();
 }
 
 
@@ -3837,14 +3857,26 @@ function resetAllData(){
   S.dupAlerts=[];
   S.manifest=[];
   S._manifesLoadedAt=null;
+  // Reset info kapal di state
+  S.ship = { name:'', route:'', voyage:'', time:'' };
+  S.shipType = 'perintis';
   saveState();
+  // Reset UI info kapal
+  setShipType('perintis');
+  const shipLbl = document.getElementById('ship-label');
+  if(shipLbl) shipLbl.textContent = 'Atur Kapal';
+  // Reset field modal kapal jika terbuka
+  ['inp-ship-name','inp-ship-route','inp-ship-voyage','inp-ship-time'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
   updateDashboard();
   renderManifestTable();
   renderTransitList();
   renderLog();
   document.getElementById('manifest-table-card').style.display='none';
   document.getElementById('manifest-summary').style.display='none';
-  showToast('✅ Semua data direset','success');
+  showToast('✅ Semua data direset termasuk info kapal','success');
 }
 
 // Alias untuk kompatibilitas
