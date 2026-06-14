@@ -376,7 +376,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       <p>Sistem Mobile Anti-Rangkap Tiket · PT PELNI Cabang Kendari</p>
     </div>
     <div class="hdr-right">
-      <div class="sync-dot" id="sync-dot" title="Status Google Sheets"></div>
+      <div class="sync-dot" id="sync-dot" title="Status Database Supabase"></div>
       <div id="role-badge-header" class="role-badge admin" onclick="confirmLogout()" title="Klik untuk logout">
         <span id="role-badge-icon">👨‍💼</span>
         <span id="role-badge-label">Admin</span>
@@ -538,7 +538,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       Upload Manifes — <span id="manifest-type-label" class="chip ctag-perintis" style="margin-left:4px">Kapal Perintis</span>
     </div>
 
-    <!-- OPSI 1: Muat dari Google Sheets -->
+    <!-- OPSI 1: Muat dari Database -->
     <div id="load-from-sheets-box" style="margin-bottom:14px">
 
       <!-- Info status manifes saat ini -->
@@ -570,20 +570,20 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
           </div>
           <div id="manifes-progress-label"
                style="font-size:10px;color:#1976D2;margin-top:4px;text-align:center">
-            Menghubungi Google Sheets...
+            Menghubungi database...
           </div>
         </div>
       </div>
 
       <!-- Muat pertama kali (hanya tampil jika belum ada manifes) -->
       <div id="manifes-empty-box">
-        <div class="slabel">☁️ Muat Manifes dari Google Sheets</div>
+        <div class="slabel">☁️ Muat Manifes dari Database</div>
         <div style="font-size:11px;color:var(--gray-500);margin-bottom:8px;line-height:1.6">
-          Jika Admin sudah upload manifes ke Google Sheets, petugas dapat memuat langsung dari sini.
-          Pastikan URL Google Sheets sudah diisi di menu <b>☁️ Google Sheets</b>.
+          Jika Admin sudah upload manifes, petugas dapat memuat langsung dari database.
+          Pastikan konfigurasi Supabase sudah diisi di menu <b>🗄️ Database</b>.
         </div>
         <button class="btn btn-primary" id="btn-load-sheets" onclick="loadManifesFromSheets()">
-          ☁️ Muat Manifes dari Google Sheets
+          ☁️ Muat Manifes dari Database
         </button>
         <div id="load-sheets-status" style="margin-top:8px;font-size:11px;color:var(--gray-500)"></div>
       </div>
@@ -716,7 +716,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
                 padding:10px 14px;background:#E3F2FD;border-radius:10px;gap:10px">
       <div style="flex:1">
         <div style="font-size:12px;font-weight:700;color:#1565C0">
-          📊 Data Real-Time dari Google Sheets
+          📊 Data Real-Time dari Supabase
         </div>
         <div id="dash-last-sync" style="font-size:10px;color:#1976D2;margin-top:2px">
           Belum disinkronkan
@@ -856,7 +856,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   <!-- Sync status -->
   <div id="tr-sync-bar" class="sync-bar disconnected" style="margin-bottom:14px">
     <div class="sync-dot" id="tr-sync-dot"></div>
-    <span id="tr-sync-text">Sync Google Sheets: belum terhubung</span>
+    <span id="tr-sync-text">Sync Database: belum terhubung</span>
     <button class="btn btn-sm btn-success" style="margin-left:auto;padding:4px 10px" onclick="syncTransitNow()">🔄 Sync</button>
   </div>
 
@@ -1036,7 +1036,7 @@ const SUPABASE_URL  = '';  // ← PASTE Project URL  (https://xxx.supabase.co)
 const SUPABASE_ANON = '';  // ← PASTE anon public key
 const APP_VERSION   = 'v2.0';
 
-// Legacy — tidak dipakai lagi (Supabase menggantikan Google Sheets)
+// Legacy — tidak dipakai lagi (Supabase menggantikan Database)
 const GS_APPS_SCRIPT_URL = '';
 
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
@@ -1499,7 +1499,7 @@ function showAutoLoadBanner(){
     <span style="font-size:18px">☁️</span>
     <div style="flex:1">
       <div style="font-weight:700">Manifes belum dimuat</div>
-      <div style="font-size:11px;opacity:.85">Klik tombol untuk memuat data penumpang dari Google Sheets</div>
+      <div style="font-size:11px;opacity:.85">Klik tombol untuk memuat data penumpang dari database</div>
     </div>
     <button onclick="autoLoadManifes(this.parentElement)"
       style="background:#fff;color:#1565C0;border:none;padding:8px 14px;
@@ -1644,7 +1644,7 @@ setInterval(updateManifesStatusUI, 30000);
 async function perbaruiManifes(){
   const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
   if(!gsUrl){
-    showToast('URL Google Sheets belum dikonfigurasi · Hubungi Admin','error');
+    showToast('Database Supabase belum dikonfigurasi · Hubungi Admin','error');
     return;
   }
   if(gsUrl) S.gs.url = gsUrl; // pastikan state ter-update
@@ -1665,7 +1665,7 @@ async function perbaruiManifes(){
   const ticker = setInterval(()=>{
     pct = Math.min(pct + 8, 85);
     if(progressBar) progressBar.style.width = pct + '%';
-    if(pct < 30 && progressLabel) progressLabel.textContent = 'Menghubungi Google Sheets...';
+    if(pct < 30 && progressLabel) progressLabel.textContent = 'Menghubungi database...';
     else if(pct < 60 && progressLabel) progressLabel.textContent = 'Mengunduh data manifes...';
     else if(progressLabel) progressLabel.textContent = 'Memproses data penumpang...';
   }, 300);
@@ -1754,13 +1754,13 @@ async function loadManifesFromSheets(){
   const status = document.getElementById('load-sheets-status');
 
   if(!S.gs.url){
-    status.innerHTML='<span style="color:var(--red)">⚠️ URL Google Sheets belum diisi. Buka menu ☁️ Google Sheets terlebih dahulu.</span>';
+    status.innerHTML='<span style="color:var(--red)">⚠️ Database Supabase belum dikonfigurasi. Hubungi Admin.</span>';
     return;
   }
 
   btn.disabled = true;
   btn.textContent = '⏳ Memuat...';
-  status.innerHTML = '<span style="color:var(--gray-500)">Menghubungi Google Sheets...</span>';
+  status.innerHTML = '<span style="color:var(--gray-500)">Menghubungi database...</span>';
 
   try{
     const url = S.gs.url.replace('/exec','/exec') + '?action=getManifes&t='+Date.now();
@@ -1811,7 +1811,7 @@ async function loadManifesFromSheets(){
     updateDashCounters();
     updateManifesStatusUI();
 
-    status.innerHTML=`<span style="color:var(--green)">✅ Berhasil memuat <b>${manifest.length}</b> penumpang dari Google Sheets · ${new Date().toLocaleTimeString('id-ID',{hour12:false})}</span>`;
+    status.innerHTML=`<span style="color:var(--green)">✅ Berhasil memuat <b>${manifest.length}</b> penumpang dari database · ${new Date().toLocaleTimeString('id-ID',{hour12:false})}</span>`;
     btn.textContent='✅ Manifes Termuat';
     showToast(`✅ ${manifest.length} penumpang dimuat dari Sheets`,'success');
 
@@ -1833,7 +1833,7 @@ function refreshLoadSheetsBtn(){
   if(!btn) return;
   if(!S.gs.url){
     btn.disabled=false;
-    if(st) st.innerHTML='<span style="color:var(--gray-400)">💡 Isi URL Google Sheets di menu ☁️ agar tombol ini aktif.</span>';
+    if(st) st.innerHTML='<span style="color:var(--gray-400)">💡 Konfigurasi Supabase di menu 🗄️ Database agar fitur ini aktif.</span>';
   } else {
     btn.disabled=false;
     if(st && !st.innerHTML.includes('Berhasil')) st.innerHTML='';
@@ -2306,7 +2306,7 @@ function updateInfografis(){
 
 // ══════════════════════════════════════════════════════════════
 // SUPABASE — FUNGSI DATABASE
-// Menggantikan gsPost / Google Sheets sepenuhnya
+// Menggantikan gsPost / Database sepenuhnya
 // ══════════════════════════════════════════════════════════════
 
 // ── SCAN LOG ──────────────────────────────────────────────────
@@ -2568,7 +2568,7 @@ function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
 // Simpan tiket terakhir yang di-scan untuk tombol catat lanjutan
 let lastScannedTicket = '';
 
-// Catat penumpang lanjutan secara manual ke log dan Google Sheets
+// Catat penumpang lanjutan secara manual ke log dan Database
 function catatPenumpangLanjutan(ticket){
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
   const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
@@ -2608,14 +2608,16 @@ function catatPenumpangLanjutan(ticket){
 // ══════════════════════════════════════════
 // MANIFEST UPLOAD
 // ══════════════════════════════════════════
-function handleUpload(e){
+async function handleUpload(e){
   const file=e.target.files[0]; if(!file) return;
   const name=file.name.toLowerCase();
   const isPDF = name.endsWith('.pdf');
 
   // Update upload zone UI
-  document.getElementById('upload-icon').textContent = isPDF ? '📄' : '📊';
-  document.getElementById('upload-label').textContent = isPDF ? file.name : file.name;
+  const uploadIcon = document.getElementById('upload-icon');
+  const uploadLabel = document.getElementById('upload-label');
+  if(uploadIcon)  uploadIcon.textContent  = isPDF ? '📄' : '📊';
+  if(uploadLabel) uploadLabel.textContent = file.name;
 
   if(isPDF){
     if(S.shipType !== 'penumpang'){
@@ -2627,7 +2629,7 @@ function handleUpload(e){
   }
 
   const reader=new FileReader();
-  reader.onload=function(ev){
+  reader.onload=async function(ev){
     try{
       let rows;
       if(name.endsWith('.csv')){
@@ -2644,7 +2646,24 @@ function handleUpload(e){
       updateManifestSummary();
       renderManifestTable();
       document.getElementById('manifest-table-card').style.display='block';
-      showToast(`✅ ${S.manifest.length} penumpang dimuat`,'success');
+      showToast(`✅ ${S.manifest.length} penumpang dimuat dari file`,'success');
+
+      // Otomatis upload ke Supabase
+      if(sb){
+        showToast('⏳ Menyimpan ke database Supabase...','warning');
+        const ok = await sbUploadManifes(S.manifest, S.shipType);
+        if(ok){
+          showToast(`✅ ${S.manifest.length} penumpang tersimpan ke database · ScanLog lama diarsip`,'success');
+          // Reset scan log lokal
+          S.scanLog=[]; S.dupAlerts=[];
+          S.manifest.forEach(p=>{ p._status='pending'; });
+          saveState(); updateDashCounters(); renderLog();
+        } else {
+          showToast('⚠️ File berhasil dibaca tapi gagal simpan ke database','warning');
+        }
+      } else {
+        showToast('⚠️ Database belum dikonfigurasi — data hanya tersimpan lokal','warning');
+      }
     }catch(err){
       showToast('❌ Gagal baca file: '+err.message,'error');
     }
@@ -2791,6 +2810,21 @@ async function parsePDF(file){
 
     S.manifest = unique;
     saveState();
+
+    // Auto-upload ke Supabase
+    if(sb){
+      showToast('⏳ Menyimpan ke database...','warning');
+      sbUploadManifes(S.manifest, 'penumpang').then(ok=>{
+        if(ok){
+          showToast('✅ '+S.manifest.length+' penumpang tersimpan ke database','success');
+          S.scanLog=[]; S.dupAlerts=[];
+          S.manifest.forEach(p=>{ p._status='pending'; });
+          saveState(); updateDashCounters(); renderLog();
+        } else {
+          showToast('⚠️ PDF dibaca tapi gagal simpan ke database','warning');
+        }
+      });
+    }
 
     setTimeout(()=>{
       document.getElementById('pdf-progress').style.display='none';
@@ -3245,18 +3279,18 @@ function updateTrSyncStatus(ok){
   if(!dot||!txt||!bar) return;
   if(!S.gs.connected){
     dot.className='sync-dot'; bar.className='sync-bar disconnected';
-    txt.textContent='Sync Google Sheets: belum terhubung';
+    txt.textContent='Sync Database: belum terhubung';
   } else if(ok){
     dot.className='sync-dot ok'; bar.className='sync-bar connected';
-    txt.textContent='Sync Google Sheets: tersimpan · '+new Date().toLocaleTimeString('id-ID',{hour12:false});
+    txt.textContent='Sync Database: tersimpan · '+new Date().toLocaleTimeString('id-ID',{hour12:false});
   } else {
     dot.className='sync-dot'; bar.className='sync-bar disconnected';
-    txt.textContent='Sync Google Sheets: gagal — periksa koneksi';
+    txt.textContent='Sync Database: gagal — periksa koneksi';
   }
 }
 
 async function syncTransitNow(){
-  if(!S.gs.connected){showToast('Belum terhubung ke Google Sheets','error');return;}
+  if(!S.gs.connected){showToast('Database Supabase belum terhubung','error');return;}
   showToast('🔄 Sync transit...','warning');
   let ok=true;
   for(const t of S.transitLog.slice(0,100)){
@@ -3437,14 +3471,15 @@ function updateGSDot(){
   const dot=document.getElementById('sync-dot');
   const bar=document.getElementById('gs-status-bar');
   const txt=document.getElementById('gs-status-text');
-  if(S.gs.connected){
+  if(!dot||!bar||!txt) return;
+  if(sb && SUPABASE_URL){
     dot.className='sync-dot ok';
     bar.className='sync-bar connected';
-    txt.textContent='Terhubung ke Google Sheets · '+( S.gs.name||'—');
+    txt.textContent='Terhubung ke Supabase · Database aktif';
   } else {
     dot.className='sync-dot';
     bar.className='sync-bar disconnected';
-    txt.textContent='Belum terhubung ke Google Sheets';
+    txt.textContent='Database belum dikonfigurasi · Isi SUPABASE_URL di index.html';
   }
 }
 
@@ -3484,9 +3519,9 @@ async function connectGS(){
     const res = await fetch(url+'?action=ping', { redirect:'follow' });
     const json = await res.json();
     if(json.ok){
-      S.gs.url=url; S.gs.name=name||'Google Sheets'; S.gs.connected=true;
+      S.gs.url=url; S.gs.name=name||'Database Supabase'; S.gs.connected=true;
       saveState(); renderGSPage(); updateGSDot();
-      showToast('✅ Terhubung ke Google Sheets!','success');
+      showToast('✅ Terhubung ke Database Supabase!','success');
     } else {
       showToast('Koneksi gagal: '+json.msg,'error');
     }
@@ -3496,7 +3531,7 @@ async function connectGS(){
 }
 
 function disconnectGS(){
-  if(!confirm('Putus koneksi Google Sheets?')) return;
+  if(!confirm('Putus koneksi Database?')) return;
   S.gs.connected=false; S.gs.autoSync=false;
   saveState(); renderGSPage(); updateGSDot();
   showToast('Koneksi diputus');
@@ -3570,7 +3605,7 @@ function saveSettings(){ saveState(); }
 
 // Reset hanya log scan & status boarding (manifes tetap)
 async function resetScanOnly(){
-  if(!confirm('Reset Log Scan?\n\nRiwayat scan dan status boarding dihapus.\nScanLog di Google Sheets akan diarsip lalu dikosongkan.\nManifes penumpang tetap tersimpan.')) return;
+  if(!confirm('Reset Log Scan?\n\nRiwayat scan dan status boarding dihapus.\nScanLog di database akan diarsip lalu dikosongkan.\nManifes penumpang tetap tersimpan.')) return;
 
   // Reset data lokal
   S.scanLog=[];
@@ -3600,7 +3635,7 @@ async function resetScanOnly(){
 
 // Reset semua termasuk manifes (mulai dari awal total)
 function resetAllData(){
-  if(!confirm('Reset SEMUA data?\n\nManifes, log scan, dan semua data akan dihapus.\nPengaturan kapal & URL Google Sheets tetap.')) return;
+  if(!confirm('Reset SEMUA data?\n\nManifes, log scan, dan semua data akan dihapus.\nKonfigurasi Supabase tetap tersimpan.')) return;
   S.scanLog=[];
   S.transitLog=[];
   S.lanjutanLog=[];
