@@ -1171,18 +1171,33 @@ function getOrCreateSheet(name, headers) {
 // ══════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════
-// ╔══════════════════════════════════════════════════════════════╗
-// ║  KONFIGURASI DEPLOYMENT — ISI SEBELUM DEPLOY KE NETLIFY     ║
-// ╚══════════════════════════════════════════════════════════════╝
-const GS_APPS_SCRIPT_URL = '';  // ← PASTE URL APPS SCRIPT DI SINI
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║           ⚙️  KONFIGURASI WAJIB — ISI SEBELUM DEPLOY               ║
+// ╠══════════════════════════════════════════════════════════════════════╣
+// ║                                                                      ║
+// ║  LANGKAH 1: Isi URL Apps Script Google Sheets di bawah ini          ║
+// ║  Cara dapatkan URL:                                                  ║
+// ║    - Buka Google Sheets → Extensions → Apps Script                  ║
+// ║    - Klik Deploy → Manage deployments                                ║
+// ║    - Copy URL yang diawali https://script.google.com/...            ║
+// ║                                                                      ║
+// ║  LANGKAH 2: Ganti PIN sesuai kebutuhan                              ║
+// ║                                                                      ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+const GS_APPS_SCRIPT_URL = '';
+// ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
+// Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
+
 const APP_VERSION = 'v2.0';
 
-// PIN PER ROLE — ganti sesuai kebutuhan sebelum deploy
+// ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
   admin : '1234',   // ← ganti PIN Admin
   f1    : '1111',   // ← ganti PIN Petugas F1 (Trestle)
   f2    : '2222',   // ← ganti PIN Petugas F2 (Tangga Kapal)
 };
+// ↑↑↑ GANTI ANGKA PIN DI ATAS SEBELUM DEPLOY ↑↑↑
 
 // Konfigurasi akses menu per role
 const ROLE_ACCESS = {
