@@ -1185,7 +1185,7 @@ function getOrCreateSheet(name, headers) {
 // ║                                                                      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzqihEZmtUEH6fKLA3UYy8HhEr-fJOjb2WY5ot-E8j-lUMOXDcW_cBxzhB3fNsfbQ/exec';
+const GS_APPS_SCRIPT_URL = '';
 // ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
 // Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
 
@@ -2182,10 +2182,13 @@ async function fetchManifesFromGS(){
     .filter(r=>r.some(c=>String(c).trim()!==''))
     .map(row=>{
       const o={};
-      rawHeaders.forEach((h,i)=>{ 
-        // Konversi semua nilai ke string kecuali yang perlu jadi angka
+      rawHeaders.forEach((h,i)=>{
         const val = row[i];
-        o[h] = val !== undefined && val !== null ? val : '';
+        // Simpan nilai apa adanya (termasuk 0 untuk umur bayi)
+        o[h] = (val !== undefined && val !== null) ? val : '';
+        // Juga buat alias lowercase untuk toleransi nama field
+        const hLow = h.toLowerCase();
+        if(hLow !== h) o[hLow] = o[h];
       });
       return o;
     })
@@ -2666,18 +2669,20 @@ function renderManifestTable(){
       const tujuan = p.TUJUAN||p['Pel. Tujuan']||p['PELABUHAN TUJUAN']||'—';
       const asal = p.ASAL||p['Pel. Awal']||p['PELABUHAN ASAL']||'—';
       const kelas = p.KELAS||p['KELAS EKONOMI']||'—';
-      // Umur Tahun: dari PDF (UMUR_TAHUN) atau Sheets (USIA)
-      const umurThRaw = p.UMUR_TAHUN !== undefined && p.UMUR_TAHUN !== ''
-                        ? p.UMUR_TAHUN
-                        : (p.USIA !== undefined && p.USIA !== '' ? p.USIA : '');
-      const umurTh = (umurThRaw !== '' && umurThRaw !== null && umurThRaw !== undefined)
-                     ? String(umurThRaw) : '—';
-      // Umur Bulan: dari PDF (UMUR_BULAN) atau Sheets (USIA_BULAN)
-      const umurBlnRaw = p.UMUR_BULAN !== undefined && p.UMUR_BULAN !== ''
-                         ? p.UMUR_BULAN
-                         : (p.USIA_BULAN !== undefined && p.USIA_BULAN !== '' ? p.USIA_BULAN : '');
-      const umurBln = (umurBlnRaw !== '' && umurBlnRaw !== null && umurBlnRaw !== undefined)
-                      ? String(umurBlnRaw) : '—';
+      // Helper: ambil nilai umur — handle 0 (bayi usia 0 th/bln), string, number
+      const getUmur = (...keys) => {
+        for(const k of keys){
+          const v = p[k];
+          // Cek eksplisit: nilai valid termasuk angka 0
+          if(v !== undefined && v !== null && v !== '') return String(v);
+          if(v === 0 || v === '0') return '0';
+        }
+        return '—';
+      };
+      // Umur Tahun: cek semua kemungkinan nama field
+      const umurTh  = getUmur('UMUR_TAHUN','USIA','umur_tahun','usia');
+      // Umur Bulan: cek semua kemungkinan nama field
+      const umurBln = getUmur('UMUR_BULAN','USIA_BULAN','umur_bulan','usia_bulan');
       const posChip=scan?`<span class="chip ${scan.pos==='F1'?'cf1':'cf2'}">${scan.pos}</span>`:'—';
       let katBadge='';
       const katUp = (kat||'').toString().toUpperCase().trim();
