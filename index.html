@@ -1044,12 +1044,47 @@ function doPost(e) {
     }
 
     if (data.action === 'uploadManifes') {
+
+      // ── ARSIP SCANLOG LAMA sebelum sesi baru dimulai ──
+      const scanSh = SS.getSheetByName('ScanLog');
+      if (scanSh && scanSh.getLastRow() > 1) {
+        try {
+          // Buat nama sheet arsip dengan timestamp
+          const now = new Date();
+          const stamp = Utilities.formatDate(now, 'Asia/Makassar', 'yyyyMMdd_HHmm');
+          const arsipName = 'ScanLog_' + stamp;
+
+          // Copy sheet ScanLog ke arsip
+          const arsipSh = scanSh.copyTo(SS);
+          arsipSh.setName(arsipName);
+
+          // Warnai tab arsip abu-abu agar mudah dibedakan
+          arsipSh.setTabColor('#9E9E9E');
+
+          // Kosongkan ScanLog aktif - hapus semua lalu tulis ulang header
+          scanSh.clearContents();
+          const scanHeaders = ['Waktu','No Tiket','Nama','Pos','Status','Info','Tipe Kapal','Nama Kapal','Voyage'];
+          scanSh.appendRow(scanHeaders);
+          scanSh.getRange(1, 1, 1, scanHeaders.length)
+            .setBackground('#0A2342')
+            .setFontColor('#FFFFFF')
+            .setFontWeight('bold');
+
+          // Catat arsip di sheet log internal (opsional)
+          Logger.log('ScanLog diarsip ke: ' + arsipName);
+        } catch(archErr) {
+          Logger.log('Gagal arsip ScanLog: ' + archErr.message);
+          // Lanjut upload manifes meski arsip gagal
+        }
+      }
+
+      // ── TULIS MANIFES BARU ──
       const sh = getOrCreateSheet('Manifes', data.headers);
 
-      // Hapus SEMUA isi sheet (termasuk header lama jika ada)
+      // Hapus SEMUA isi sheet (termasuk header lama)
       sh.clearContents();
 
-      // Tulis header di baris 1 — selalu, tanpa pengecualian
+      // Tulis header di baris 1
       sh.appendRow(data.headers);
       sh.getRange(1, 1, 1, data.headers.length)
         .setBackground('#0A2342')
@@ -1091,12 +1126,25 @@ function doPost(e) {
 function getOrCreateSheet(name, headers) {
   let sh = SS.getSheetByName(name);
   if (!sh) {
+    // Sheet belum ada - buat baru
     sh = SS.insertSheet(name);
-    sh.appendRow(headers);
-    sh.getRange(1, 1, 1, headers.length)
-      .setBackground('#0A2342')
-      .setFontColor('#FFFFFF')
-      .setFontWeight('bold');
+  }
+  // Selalu pastikan baris 1 berisi header yang benar
+  if (headers && headers.length > 0) {
+    const firstRow = sh.getLastRow() > 0 ? sh.getRange(1, 1, 1, headers.length).getValues()[0] : [];
+    const hasHeader = firstRow.some(cell => String(cell).trim() !== '');
+    if (!hasHeader) {
+      // Baris 1 kosong - tulis header
+      if (sh.getLastRow() === 0) {
+        sh.appendRow(headers);
+      } else {
+        sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      }
+      sh.getRange(1, 1, 1, headers.length)
+        .setBackground('#0A2342')
+        .setFontColor('#FFFFFF')
+        .setFontWeight('bold');
+    }
   }
   return sh;
 }</div>
@@ -1233,7 +1281,7 @@ function getOrCreateSheet(name, headers) {
 // ║                                                                      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzqihEZmtUEH6fKLA3UYy8HhEr-fJOjb2WY5ot-E8j-lUMOXDcW_cBxzhB3fNsfbQ/exec';
+const GS_APPS_SCRIPT_URL = '';
 // ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
 // Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
 
@@ -3465,7 +3513,14 @@ async function syncManifes(){
         String(p.UMUR_TAHUN||p.USIA||''),String(p.UMUR_BULAN||''),p.NO_IDENTITAS||'',p._status||'pending']
     );
     await gsPost({action:'uploadManifes',headers,rows});
-    showToast('✅ Manifes '+S.manifest.length+' penumpang berhasil diupload','success');
+    showToast('✅ Manifes '+S.manifest.length+' penumpang diupload · ScanLog lama diarsip otomatis','success');
+    // Reset scanLog lokal saat manifes baru diupload
+    S.scanLog=[];
+    S.dupAlerts=[];
+    S.manifest.forEach(p=>{ p._status='pending'; });
+    saveState();
+    updateDashCounters();
+    renderLog();
   }catch(e){
     showToast('Upload manifes gagal: '+e.message,'error');
   }
