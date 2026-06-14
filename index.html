@@ -2230,27 +2230,39 @@ async function refreshStatusFromSheets(){
     const data = await sbGetScanStats();
     if(!data.rows) return;
 
-    // Update _status manifes dari scanLog Supabase
-    let changed = false;
+    // Bangun peta status terbaik per tiket dari scan_log
+    // (ambil status tertinggi: naik > dermaga > perhatian)
+    const statusRank = { 'naik':3, 'dermaga':2, 'perhatian':1 };
+    const bestStatus = {};
+
     data.rows.forEach(log => {
       const ticket = String(log.no_tiket||'').trim();
-      const status = String(log.status||'').trim();
+      const rawStatus = String(log.status||'').trim();
       if(!ticket) return;
 
+      // Konversi status scan_log → status manifes
+      const manifesStatus = rawStatus==='NAIK'      ? 'naik'
+                           : rawStatus==='OK'        ? 'dermaga'
+                           : rawStatus==='PERHATIAN' ? 'perhatian'
+                           : null;
+      if(!manifesStatus) return;
+
+      const curRank = statusRank[bestStatus[ticket]] || 0;
+      const newRank = statusRank[manifesStatus] || 0;
+      if(newRank > curRank) bestStatus[ticket] = manifesStatus;
+    });
+
+    // Terapkan ke manifest
+    let changed = false;
+    Object.entries(bestStatus).forEach(([ticket, newStatus]) => {
       const pax = S.manifest.find(p =>
         (p['No Tiket']||p.NO_TIKET||'').toString().trim() === ticket
       );
-      if(pax){
-        if(status === 'NAIK' && pax._status !== 'naik'){
-          pax._status = 'naik';
-          changed = true;
-        } else if(status === 'OK' && pax._status === 'pending'){
-          pax._status = 'dermaga';
-          changed = true;
-        }
+      if(pax && pax._status !== newStatus){
+        pax._status = newStatus;
+        changed = true;
       }
     });
-
     if(changed){
       saveState();
       renderManifestTable();
@@ -2491,8 +2503,9 @@ async function sbGetScanStats(){
   if(!sb) return { naik:0, f1:0, dup:0, total:0 };
   const sesiId = getSesiId();
   const { data } = await sb.from('scan_log')
-    .select('status,pos')
-    .eq('sesi_id', sesiId);
+    .select('no_tiket,status,pos,nama,waktu')
+    .eq('sesi_id', sesiId)
+    .order('created_at', { ascending: true });
   if(!data) return { naik:0, f1:0, dup:0, total:0 };
   return {
     naik  : data.filter(r=>r.status==='NAIK').length,
