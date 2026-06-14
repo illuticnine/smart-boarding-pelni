@@ -646,11 +646,36 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     </div>
   </div>
 
+  <!-- Tombol refresh dan status sync - hanya tampil untuk Admin -->
+  <div id="dash-admin-bar" style="display:none;margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:10px 14px;background:#E3F2FD;border-radius:10px;gap:10px">
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:700;color:#1565C0">
+          📊 Data Real-Time dari Google Sheets
+        </div>
+        <div id="dash-last-sync" style="font-size:10px;color:#1976D2;margin-top:2px">
+          Belum disinkronkan
+        </div>
+        <div id="dash-countdown" style="font-size:10px;color:#42A5F5;margin-top:1px">
+          Refresh otomatis dalam 30 detik
+        </div>
+      </div>
+      <button onclick="refreshDashboardFromSheets();updateCountdownTick()"
+              id="btn-dash-refresh"
+              style="background:#1565C0;color:#fff;border:none;padding:8px 14px;
+                     border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;
+                     white-space:nowrap;flex-shrink:0">
+        🔄 Refresh
+      </button>
+    </div>
+  </div>
+
   <div class="stats-grid">
     <div class="stat-card sc-blue"><div class="stat-num" id="d-total">0</div><div class="stat-label">Total Pnp</div></div>
     <div class="stat-card sc-green"><div class="stat-num" id="d-naik">0</div><div class="stat-label">Sudah Naik</div></div>
     <div class="stat-card sc-red"><div class="stat-num" id="d-dup">0</div><div class="stat-label">Alert Duplikat</div></div>
-    <div class="stat-card sc-amber"><div class="stat-num" id="d-transit">0</div><div class="stat-label">Transit Aktif</div></div>
+    <div class="stat-card sc-amber"><div class="stat-num" id="d-f1">0</div><div class="stat-label">Lewat F1</div></div>
   </div>
 
   <div class="card">
@@ -923,6 +948,29 @@ function doGet(e) {
       });
     } catch(err) {
       return makeResponse({ ok: false, msg: 'Error getManifes: ' + err.message, rows: [] });
+    }
+  }
+
+  // Ambil scan log untuk dashboard Admin
+  if (action === 'getScanLog') {
+    try {
+      const sh = SS.getSheetByName('ScanLog');
+      if (!sh || sh.getLastRow() < 2) {
+        return makeResponse({ ok: true, rows: [], naik: 0, f1: 0, dup: 0, total: 0 });
+      }
+      const rows = sh.getDataRange().getValues();
+      const headers = rows[0].map(String);
+      const data = rows.slice(1).map(row => {
+        const o = {};
+        headers.forEach((h, i) => { o[h.trim()] = String(row[i]||'').trim(); });
+        return o;
+      });
+      const naik = data.filter(r => r['Status'] === 'NAIK').length;
+      const f1   = data.filter(r => r['Pos'] === 'F1' && r['Status'] === 'OK').length;
+      const dup  = data.filter(r => r['Status'] === 'DUPLIKAT').length;
+      return makeResponse({ ok: true, rows: data, naik, f1, dup, total: data.length });
+    } catch(err) {
+      return makeResponse({ ok: false, msg: 'Error: ' + err.message });
     }
   }
 
@@ -1298,7 +1346,19 @@ function showPage(id){
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+id)?.classList.add('active');
   document.getElementById('tab-'+id).classList.add('active');
-  if(id==='dashboard') updateDashboard();
+  if(id==='dashboard'){
+    updateDashboard();
+    // Admin: tampilkan bar refresh dan auto-refresh dari Sheets
+    const adminBar = document.getElementById('dash-admin-bar');
+    if(adminBar) adminBar.style.display = (currentRole==='admin') ? 'block' : 'none';
+    if(currentRole==='admin' && (GS_APPS_SCRIPT_URL||S.gs.url)){
+      refreshDashboardFromSheets();
+      startDashAutoRefresh();
+    }
+  } else {
+    // Hentikan auto-refresh jika pindah halaman lain
+    stopDashAutoRefresh();
+  }
   if(id==='log') renderLog();
   if(id==='manifest'){ renderManifestTable(); refreshLoadSheetsBtn(); updateManifesStatusUI(); }
   if(id==='transit'){
@@ -2104,6 +2164,7 @@ function confirmLogout(){
 }
 
 function logout(){
+  stopDashAutoRefresh(); // Hentikan auto-refresh saat logout
   currentRole = null;
   selectedLoginRole = null;
   // Reset form login
@@ -2296,6 +2357,136 @@ async function applyUrlFromDialog(){
     showToast('❌ '+err.message,'error');
     showUrlInputDialog(); // Buka lagi kalau gagal
   }
+}
+
+
+// ══════════════════════════════════════
+// DASHBOARD REFRESH DARI SHEETS (untuk Admin)
+// ══════════════════════════════════════
+async function refreshDashboardFromSheets(){
+  const btn = document.getElementById('btn-dash-refresh');
+  const syncEl = document.getElementById('dash-last-sync');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Memuat...'; }
+
+  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
+  if(!gsUrl){
+    showToast('URL Google Sheets belum dikonfigurasi','error');
+    if(btn){ btn.disabled=false; btn.textContent='🔄 Refresh'; }
+    return;
+  }
+
+  try{
+    const url = gsUrl + '?action=getScanLog&t=' + Date.now();
+    const res = await fetch(url, { method:'GET', redirect:'follow', cache:'no-store' });
+    const data = JSON.parse(await res.text());
+
+    if(!data.ok) throw new Error(data.msg || 'Gagal ambil data');
+
+    // Update counter dashboard dari Sheets
+    const total = S.manifest.length;
+    const naik  = data.naik  || 0;
+    const f1    = data.f1    || 0;
+    const dup   = data.dup   || 0;
+    const pct   = total > 0 ? Math.round(naik / total * 100) : 0;
+
+    const el = id => document.getElementById(id);
+    if(el('d-total'))  el('d-total').textContent  = total;
+    if(el('d-naik'))   el('d-naik').textContent   = naik;
+    if(el('d-dup'))    el('d-dup').textContent     = dup;
+    if(el('d-f1'))     el('d-f1').textContent      = f1;
+    if(el('d-pct'))    el('d-pct').textContent     = pct + '%';
+
+    // Update progress bar
+    const bar = document.getElementById('progress-bar');
+    if(bar) bar.style.width = pct + '%';
+
+    // Update manifest _status dari scan log Sheets
+    if(data.rows && data.rows.length > 0 && S.manifest.length > 0){
+      data.rows.forEach(log => {
+        const ticket = String(log['No Tiket']||log['Waktu']||'').trim();
+        const status = String(log['Status']||'').trim();
+        const pax = S.manifest.find(p =>
+          (p['No Tiket']||p.NO_TIKET||'').toString().trim() === ticket
+        );
+        if(pax){
+          if(status === 'NAIK') pax._status = 'naik';
+          else if(status === 'OK' && pax._status !== 'naik') pax._status = 'dermaga';
+        }
+      });
+      saveState();
+      renderManifestTable();
+    }
+
+    const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
+    if(syncEl) syncEl.textContent = `Terakhir sync: ${now} · ${data.total} entri scan`;
+    showToast(`✅ Dashboard diperbarui · ${naik} penumpang naik`, 'success');
+
+  }catch(err){
+    showToast('❌ Gagal refresh: ' + err.message, 'error');
+    if(syncEl) syncEl.textContent = 'Gagal sync — ' + err.message;
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent='🔄 Refresh'; }
+  }
+}
+
+
+// ══════════════════════════════════════
+// AUTO-REFRESH DASHBOARD (Admin only)
+// ══════════════════════════════════════
+let _dashRefreshTimer = null;
+const DASH_REFRESH_INTERVAL = 30000; // 30 detik
+
+function startDashAutoRefresh(){
+  stopDashAutoRefresh(); // clear timer lama jika ada
+  _dashRefreshTimer = setInterval(()=>{
+    // Hanya refresh jika halaman dashboard sedang aktif dan role admin
+    const dashPage = document.getElementById('page-dashboard');
+    if(dashPage && dashPage.classList.contains('active') && currentRole==='admin'){
+      refreshDashboardFromSheets();
+      updateCountdownTick(); // reset countdown
+    }
+  }, DASH_REFRESH_INTERVAL);
+
+  // Mulai countdown indicator
+  startCountdown();
+  console.log('[SMART-Boarding] Auto-refresh dashboard dimulai (30 detik)');
+}
+
+function stopDashAutoRefresh(){
+  if(_dashRefreshTimer){
+    clearInterval(_dashRefreshTimer);
+    _dashRefreshTimer = null;
+  }
+  stopCountdown();
+}
+
+// Countdown indicator di admin bar
+let _countdownTimer = null;
+let _countdownSec = 30;
+
+function startCountdown(){
+  stopCountdown();
+  _countdownSec = 30;
+  updateCountdownUI();
+  _countdownTimer = setInterval(()=>{
+    _countdownSec--;
+    if(_countdownSec <= 0) _countdownSec = 30;
+    updateCountdownUI();
+  }, 1000);
+}
+
+function stopCountdown(){
+  if(_countdownTimer){ clearInterval(_countdownTimer); _countdownTimer=null; }
+}
+
+function updateCountdownUI(){
+  const el = document.getElementById('dash-countdown');
+  if(el) el.textContent = 'Refresh otomatis dalam ' + _countdownSec + ' detik';
+}
+
+function updateCountdownTick(){
+  _countdownSec = 30;
+  updateCountdownUI();
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
@@ -2728,9 +2919,11 @@ function updateDashCounters(){
   const f1=S.scanLog.filter(l=>l.pos==='F1'&&l.status==='OK').length;
   const f2=S.scanLog.filter(l=>l.pos==='F2'&&l.status==='NAIK').length;
   const pct=total>0?Math.round(naik/total*100):0;
-  document.getElementById('d-total').textContent=total;
+  const el=id=>document.getElementById(id);
+  if(el('d-total')) el('d-total').textContent=total;
   document.getElementById('d-naik').textContent=naik;
-  document.getElementById('d-dup').textContent=S.dupAlerts.length;
+  if(el('d-dup'))  el('d-dup').textContent=S.dupAlerts.length;
+  if(el('d-f1'))   el('d-f1').textContent=f1;
   document.getElementById('d-transit').textContent=S.transitLog.filter(t=>!t.returned).length;
   document.getElementById('prog-bar').style.width=pct+'%';
   document.getElementById('prog-pct').textContent=pct+'%';
