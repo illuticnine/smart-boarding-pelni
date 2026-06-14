@@ -257,6 +257,29 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 .sync-bar.connected{background:var(--green-lt);color:var(--green)}
 .sync-bar.disconnected{background:var(--gray-100);color:var(--gray-600)}
 .sync-bar.syncing{background:var(--amber-lt);color:var(--amber)}
+
+  /* ── INFOGRAFIS PETUGAS ── */
+  #petugas-infografis{display:none;margin-bottom:14px;border-radius:14px;overflow:hidden;
+    background:linear-gradient(135deg,#0A2342 0%,#1565C0 100%);padding:14px 16px;
+    box-shadow:0 4px 16px rgba(21,101,192,.25)}
+  .infog-title{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+    color:rgba(255,255,255,.5);margin-bottom:12px}
+  .infog-stats{display:grid;gap:10px}
+  .infog-stats.f1,.infog-stats.f2{grid-template-columns:1fr 1fr 1fr}
+  .infog-stat{text-align:center;padding:10px 6px;background:rgba(255,255,255,.1);
+    border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+  .infog-num{font-size:28px;font-weight:800;color:#fff;line-height:1;margin-bottom:4px}
+  .infog-num.green{color:#69F0AE}
+  .infog-num.amber{color:#FFD740}
+  .infog-num.red{color:#FF6E6E}
+  .infog-label{font-size:10px;color:rgba(255,255,255,.6);font-weight:600;line-height:1.3}
+  .infog-progress{margin-top:12px;background:rgba(255,255,255,.15);border-radius:6px;
+    height:6px;overflow:hidden}
+  .infog-progress-bar{height:100%;border-radius:6px;
+    background:linear-gradient(90deg,#69F0AE,#00E676);transition:width .5s ease}
+  .infog-pct{display:flex;justify-content:space-between;margin-top:5px;
+    font-size:10px;color:rgba(255,255,255,.5)}
+
 </style>
 </head>
 <body class="perintis">
@@ -383,6 +406,46 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 <!-- ═══════════════════ SCAN PAGE ═══════════════════ -->
 <div class="page active" id="page-scan">
+
+  <!-- INFOGRAFIS PETUGAS -->
+  <div id="petugas-infografis">
+    <div class="infog-title" id="infog-title">📊 Statistik Embarkasi</div>
+    <div class="infog-stats f1" id="infog-f1-stats">
+      <div class="infog-stat">
+        <div class="infog-num green" id="infog-f1-lewat">0</div>
+        <div class="infog-label">Lewat<br>Trestle</div>
+      </div>
+      <div class="infog-stat">
+        <div class="infog-num white" id="infog-f1-sisa">0</div>
+        <div class="infog-label">Belum<br>Masuk</div>
+      </div>
+      <div class="infog-stat">
+        <div class="infog-num amber" id="infog-f1-naik">0</div>
+        <div class="infog-label">Sudah<br>Naik</div>
+      </div>
+    </div>
+    <div class="infog-stats f2" id="infog-f2-stats" style="display:none">
+      <div class="infog-stat">
+        <div class="infog-num green" id="infog-f2-naik">0</div>
+        <div class="infog-label">Naik<br>Kapal</div>
+      </div>
+      <div class="infog-stat">
+        <div class="infog-num amber" id="infog-f2-dermaga">0</div>
+        <div class="infog-label">Di<br>Dermaga</div>
+      </div>
+      <div class="infog-stat">
+        <div class="infog-num red" id="infog-f2-dup">0</div>
+        <div class="infog-label">Alert<br>Duplikat</div>
+      </div>
+    </div>
+    <div class="infog-progress">
+      <div class="infog-progress-bar" id="infog-prog-bar" style="width:0%"></div>
+    </div>
+    <div class="infog-pct">
+      <span id="infog-prog-label">0 dari 0 penumpang naik</span>
+      <span id="infog-prog-pct" style="color:#69F0AE;font-weight:700">0%</span>
+    </div>
+  </div>
 
   <!-- POS -->
   <div class="pos-grid">
@@ -1461,6 +1524,7 @@ function showPage(id){
   }
   if(id==='log') renderLog();
   if(id==='manifest'){ renderManifestTable(); refreshLoadSheetsBtn(); updateManifesStatusUI(); }
+  if(id==='scan') updateInfografis();
   if(id==='transit'){
     renderTransitList();
     updateTrStats();
@@ -1658,6 +1722,9 @@ function processTicket(ticketNo){
 
   showResult(status,name,info,gender,kategori,tujuan);
   updateDashCounters();
+  // Update tabel manifes agar status langsung terlihat berubah
+  renderManifestTable();
+  updateInfografis();
 
   // Auto-sync to Google Sheets
   if(S.gs.connected && S.gs.autoSync){
@@ -2213,9 +2280,14 @@ function applyRole(role){
   // Label "Upload File Manifes" - hanya Admin
   const uploadLabel = document.querySelector('#load-from-sheets-box .slabel:last-of-type');
 
-  // Auto-load manifes untuk petugas
+  // Auto-load manifes dan mulai refresh status untuk petugas
   if(!isAdmin){
-    autoInitPetugas();
+    autoInitPetugas().then(()=>{
+      setTimeout(startPetugasStatusRefresh, 3000);
+      updateInfografis();
+    }).catch(()=>{
+      setTimeout(startPetugasStatusRefresh, 5000);
+    });
   }
 
   // Navigasi ke halaman default
@@ -2255,7 +2327,8 @@ function confirmLogout(){
 }
 
 function logout(){
-  stopDashAutoRefresh(); // Hentikan auto-refresh saat logout
+  stopDashAutoRefresh();       // Hentikan auto-refresh dashboard
+  stopPetugasStatusRefresh();  // Hentikan auto-refresh status petugas
   currentRole = null;
   selectedLoginRole = null;
   // Reset form login
@@ -2578,6 +2651,123 @@ function updateCountdownUI(){
 function updateCountdownTick(){
   _countdownSec = 30;
   updateCountdownUI();
+}
+
+
+// ══════════════════════════════════════
+// AUTO-REFRESH STATUS UNTUK PETUGAS
+// Tarik scanLog dari Sheets tiap 30 detik agar status manifes selalu terkini
+// ══════════════════════════════════════
+let _petugasRefreshTimer = null;
+
+function startPetugasStatusRefresh(){
+  stopPetugasStatusRefresh();
+  // Langsung refresh sekali saat mulai
+  refreshStatusFromSheets();
+  // Lalu setiap 30 detik
+  _petugasRefreshTimer = setInterval(refreshStatusFromSheets, 30000);
+}
+
+function stopPetugasStatusRefresh(){
+  if(_petugasRefreshTimer){
+    clearInterval(_petugasRefreshTimer);
+    _petugasRefreshTimer = null;
+  }
+}
+
+async function refreshStatusFromSheets(){
+  // Hanya untuk petugas (bukan admin) dan hanya jika ada koneksi Sheets
+  if(currentRole === 'admin' || currentRole === null) return;
+  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
+  if(!gsUrl || !S.manifest.length) return;
+
+  try{
+    const url = gsUrl + '?action=getScanLog&t=' + Date.now();
+    const res = await fetch(url, { method:'GET', redirect:'follow', cache:'no-store' });
+    const data = JSON.parse(await res.text());
+    if(!data.ok || !data.rows) return;
+
+    // Update _status manifes dari scanLog Sheets
+    let changed = false;
+    data.rows.forEach(log => {
+      const ticket = String(log['No Tiket']||'').trim();
+      const status = String(log['Status']||'').trim();
+      if(!ticket) return;
+
+      const pax = S.manifest.find(p =>
+        (p['No Tiket']||p.NO_TIKET||'').toString().trim() === ticket
+      );
+      if(pax){
+        if(status === 'NAIK' && pax._status !== 'naik'){
+          pax._status = 'naik';
+          changed = true;
+        } else if(status === 'OK' && pax._status === 'pending'){
+          pax._status = 'dermaga';
+          changed = true;
+        }
+      }
+    });
+
+    if(changed){
+      saveState();
+      renderManifestTable();
+      updateDashCounters();
+      updateInfografis();
+    }
+  }catch(err){
+    // Gagal refresh tidak perlu toast — silent fail
+    console.log('[SMART-Boarding] Status refresh gagal:', err.message);
+  }
+}
+
+
+// ══════════════════════════════════════
+// INFOGRAFIS PETUGAS
+// ══════════════════════════════════════
+function updateInfografis(){
+  const box = document.getElementById('petugas-infografis');
+  if(!box) return;
+
+  // Hanya tampil untuk petugas, bukan admin
+  if(currentRole === 'admin' || !currentRole){
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = 'block';
+
+  const total  = S.manifest.length;
+  const naik   = S.manifest.filter(p=>p._status==='naik').length;
+  const dermaga= S.manifest.filter(p=>p._status==='dermaga').length;
+  const belum  = total - naik - dermaga;
+  const lewatF1= naik + dermaga; // sudah scan F1 = naik + di dermaga
+  const dup    = S.dupAlerts.length;
+  const pct    = total>0 ? Math.round(naik/total*100) : 0;
+
+  const se = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+
+  if(currentRole === 'f1'){
+    // F1: fokus pada yang lewat trestle
+    document.getElementById('infog-f1-stats').style.display='grid';
+    document.getElementById('infog-f2-stats').style.display='none';
+    document.getElementById('infog-title').textContent='🚪 Filter 1 — Gerbang Trestle';
+    se('infog-f1-lewat', lewatF1);
+    se('infog-f1-sisa',  belum);
+    se('infog-f1-naik',  naik);
+  } else if(currentRole === 'f2'){
+    // F2: fokus pada yang naik kapal
+    document.getElementById('infog-f1-stats').style.display='none';
+    document.getElementById('infog-f2-stats').style.display='grid';
+    document.getElementById('infog-title').textContent='⛵ Filter 2 — Tangga Kapal';
+    se('infog-f2-naik',    naik);
+    se('infog-f2-dermaga', dermaga);
+    se('infog-f2-dup',     dup);
+  }
+
+  // Progress bar
+  const bar = document.getElementById('infog-prog-bar');
+  if(bar) bar.style.width = pct+'%';
+  se('infog-prog-label', naik+' dari '+total+' penumpang naik');
+  se('infog-prog-pct',   pct+'%');
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
