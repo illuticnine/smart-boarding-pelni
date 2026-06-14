@@ -891,13 +891,27 @@ function doGet(e) {
   if (action === 'getManifes') {
     try {
       const sh = SS.getSheetByName('Manifes');
-      if (!sh || sh.getLastRow() < 2) {
-        return makeResponse({ ok: false, msg: 'Sheet Manifes kosong — Admin belum upload manifes', rows: [] });
+      if (!sh) {
+        return makeResponse({ ok: false, msg: 'Sheet Manifes tidak ditemukan — Admin belum upload manifes', rows: [] });
+      }
+      const lastRow = sh.getLastRow();
+      const lastCol = sh.getLastColumn();
+      if (lastRow < 2 || lastCol < 1) {
+        return makeResponse({ ok: false, msg: 'Sheet Manifes kosong ('+lastRow+' baris, '+lastCol+' kolom)', rows: [] });
       }
       const rows = sh.getDataRange().getValues();
-      return makeResponse({ ok: true, rows: rows });
+      // Kirim info tambahan untuk debug
+      return makeResponse({
+        ok: true,
+        rows: rows,
+        debug: {
+          totalRows: rows.length,
+          headers: rows[0] ? rows[0].map(String) : [],
+          sheet: 'Manifes'
+        }
+      });
     } catch(err) {
-      return makeResponse({ ok: false, msg: 'Error: ' + err.message, rows: [] });
+      return makeResponse({ ok: false, msg: 'Error getManifes: ' + err.message, rows: [] });
     }
   }
 
@@ -2093,17 +2107,55 @@ async function fetchManifesFromGS(){
   if(!data.ok) throw new Error(data.msg||'Gagal mengambil data dari Sheets');
   if(!data.rows||data.rows.length<2) throw new Error('Sheet Manifes kosong — Admin belum upload manifes');
 
-  const headers  = data.rows[0].map(h=>String(h).trim());
-  const hasTicket = headers.some(h=>['No Tiket','NO_TIKET'].includes(h));
-  if(!hasTicket) throw new Error('Format manifes tidak dikenali · Upload ulang manifes dari akun Admin');
-  const isPerintis = headers.some(h=>['Nama Pnp','Kategori','Tgl Etd','No Tiket'].includes(h));
-  const tipeKapal  = isPerintis ? 'perintis' : 'penumpang';
-  const manifest   = data.rows.slice(1)
-    .filter(r=>r.some(c=>c!==''))
-    .map(row=>{ const o={}; headers.forEach((h,i)=>o[h]=row[i]||''); return o; })
+  // Log debug info dari server jika ada
+  if(data.debug) console.log('[SMART-Boarding] Server debug:', JSON.stringify(data.debug));
+
+  // Normalisasi header — hapus spasi, konversi untuk pengecekan
+  const rawHeaders = data.rows[0].map(h=>String(h||'').trim());
+  const headersUpper = rawHeaders.map(h=>h.toUpperCase().replace(/[\s\.]/g,'_'));
+
+  // Debug: log headers ke console untuk diagnosis
+  console.log('[SMART-Boarding] Headers dari Sheets:', rawHeaders);
+
+  // Deteksi tiket — lebih toleran
+  const hasTicket = rawHeaders.some(h=>{
+    const u = h.toUpperCase().replace(/[\s\.]/g,'_');
+    return ['NO_TIKET','NO__TIKET','TIKET','TICKET'].includes(u)
+      || h === 'No Tiket' || h === 'NO_TIKET';
+  });
+
+  // Deteksi tipe kapal dari berbagai kemungkinan header
+  const isPerintis = rawHeaders.some(h=>{
+    const u = h.toUpperCase().replace(/[\s\.]/g,'_');
+    return ['NAMA_PNP','KATEGORI','TGL_ETD','NAMA_KAPAL'].includes(u)
+      || ['Nama Pnp','Kategori','Tgl Etd','Nama Kapal'].includes(h);
+  });
+  const tipeKapal = isPerintis ? 'perintis' : 'penumpang';
+
+  // Jika tidak ditemukan header tiket, beri pesan lebih informatif
+  if(!hasTicket){
+    const headerStr = rawHeaders.slice(0,6).join(' | ');
+    console.error('[SMART-Boarding] Header tidak dikenali:', rawHeaders);
+    throw new Error(
+      'Format manifes tidak dikenali\n' +
+      'Header: ' + headerStr + '\n' +
+      'Pastikan Admin upload ulang manifes terbaru'
+    );
+  }
+
+  const manifest = data.rows.slice(1)
+    .filter(r=>r.some(c=>String(c).trim()!==''))
+    .map(row=>{
+      const o={};
+      rawHeaders.forEach((h,i)=>{ o[h]=row[i]!==undefined?row[i]:''; });
+      return o;
+    })
     .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
-  if(!manifest.length) throw new Error('Tidak ada data penumpang yang valid');
+
+  if(!manifest.length) throw new Error('Tidak ada data penumpang yang valid di Sheets');
+
   const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
+  console.log('[SMART-Boarding] Tipe:', tipeKapal, '| Penumpang:', manifest.length, '| Kapal:', namaKapal);
   return { manifest, tipeKapal, namaKapal };
 }
 
