@@ -1171,18 +1171,33 @@ function getOrCreateSheet(name, headers) {
 // ══════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════
-// ╔══════════════════════════════════════════════════════════════╗
-// ║  KONFIGURASI DEPLOYMENT — ISI SEBELUM DEPLOY KE NETLIFY     ║
-// ╚══════════════════════════════════════════════════════════════╝
-const GS_APPS_SCRIPT_URL = '';  // ← PASTE URL APPS SCRIPT DI SINI
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║           ⚙️  KONFIGURASI WAJIB — ISI SEBELUM DEPLOY               ║
+// ╠══════════════════════════════════════════════════════════════════════╣
+// ║                                                                      ║
+// ║  LANGKAH 1: Isi URL Apps Script Google Sheets di bawah ini          ║
+// ║  Cara dapatkan URL:                                                  ║
+// ║    - Buka Google Sheets → Extensions → Apps Script                  ║
+// ║    - Klik Deploy → Manage deployments                                ║
+// ║    - Copy URL yang diawali https://script.google.com/...            ║
+// ║                                                                      ║
+// ║  LANGKAH 2: Ganti PIN sesuai kebutuhan                              ║
+// ║                                                                      ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+const GS_APPS_SCRIPT_URL = '';
+// ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
+// Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
+
 const APP_VERSION = 'v2.0';
 
-// PIN PER ROLE — ganti sesuai kebutuhan sebelum deploy
+// ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
   admin : '1234',   // ← ganti PIN Admin
   f1    : '1111',   // ← ganti PIN Petugas F1 (Trestle)
   f2    : '2222',   // ← ganti PIN Petugas F2 (Tangga Kapal)
 };
+// ↑↑↑ GANTI ANGKA PIN DI ATAS SEBELUM DEPLOY ↑↑↑
 
 // Konfigurasi akses menu per role
 const ROLE_ACCESS = {
@@ -2642,11 +2657,13 @@ function renderManifestTable(){
       if(p._status==='naik'){dc='dg';sl='✅ Naik';}
       else if(p._status==='dermaga'){dc='da';sl='🚶 Dermaga';}
       else if(scan?.status==='DUPLIKAT'){dc='dr';sl='🚨 Duplikat!';}
-      const kat = p.KATEGORI||p['Kategori']||'—';
+      const kat = p.KATEGORI||p['Kategori']||p['KELAS']||p.KELAS||'—';
       const tujuan = p.TUJUAN||p['Pel. Tujuan']||p['PELABUHAN TUJUAN']||'—';
       const asal = p.ASAL||p['Pel. Awal']||p['PELABUHAN ASAL']||'—';
       const kelas = p.KELAS||p['KELAS EKONOMI']||'—';
-      const umur = p.UMUR_TAHUN ? p.UMUR_TAHUN+' th' : (p.USIA||'—');
+      // USIA dari Sheets (data tarik), UMUR_TAHUN dari PDF parse (upload langsung)
+      const umurVal = p.UMUR_TAHUN||p.USIA||p['USIA']||'';
+      const umur = umurVal ? umurVal+' th' : '—';
       const posChip=scan?`<span class="chip ${scan.pos==='F1'?'cf1':'cf2'}">${scan.pos}</span>`:'—';
       let katBadge='';
       if(kat==='BAYI') katBadge='<span class="badge bp" style="font-size:10px">👶 BAYI</span>';
@@ -3225,16 +3242,17 @@ async function syncManifes(){
     const isPerintis=S.shipType==='perintis';
     const headers=isPerintis
       ?['Nama Kapal','No Tiket','Pel. Asal','Pel. Tujuan','Tgl Etd','Nama Pnp','Jen. Kelamin','Kategori','Status']
-      :['NO_TIKET','NAMA','KELAS','ASAL','TUJUAN','JEN_KELAMIN','USIA','NO_IDENTITAS','Status'];
+      :['NO_TIKET','NAMA','KELAS','KATEGORI','ASAL','TUJUAN','JEN_KELAMIN','USIA','NO_IDENTITAS','Status'];
     const rows=S.manifest.map(p=>isPerintis
       ?[p['Nama Kapal']||'',p['No Tiket']||p.NO_TIKET||'',
         p['Pel. Awal']||p['Pel. Asal']||'',
         p['Pel. Tujuan']||'',p['Tgl Etd']||'',p['Nama Pnp']||'',
         p['Jen. Kelamin']||'',p['Kategori']||'',p._status||'pending']
       :[p.NO_TIKET||'',p.NAMA||p['Nama Pnp']||'',p.KELAS||'',
+        p.KATEGORI||'',
         p.ASAL||p['Pel. Awal']||'',
         p.TUJUAN||p['Pel. Tujuan']||'',p.JEN_KELAMIN||p['Jen. Kelamin']||'',
-        p.USIA||'',p.NO_IDENTITAS||'',p._status||'pending']
+        p.UMUR_TAHUN||p.USIA||'',p.NO_IDENTITAS||'',p._status||'pending']
     );
     await gsPost({action:'uploadManifes',headers,rows});
     showToast('✅ Manifes '+S.manifest.length+' penumpang berhasil diupload','success');
