@@ -420,22 +420,22 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
         <div class="infog-label">Belum<br>Masuk</div>
       </div>
       <div class="infog-stat">
-        <div class="infog-num amber" id="infog-f1-naik">0</div>
-        <div class="infog-label">Sudah<br>Naik</div>
+        <div class="infog-num red" id="infog-f1-dup">0</div>
+        <div class="infog-label">Alert<br>Duplikat</div>
       </div>
     </div>
     <div class="infog-stats f2" id="infog-f2-stats" style="display:none">
       <div class="infog-stat">
+        <div class="infog-num amber" id="infog-f2-belum">0</div>
+        <div class="infog-label">Belum<br>Masuk</div>
+      </div>
+      <div class="infog-stat">
+        <div class="infog-num white" id="infog-f2-dermaga">0</div>
+        <div class="infog-label">Area<br>Dermaga</div>
+      </div>
+      <div class="infog-stat">
         <div class="infog-num green" id="infog-f2-naik">0</div>
         <div class="infog-label">Naik<br>Kapal</div>
-      </div>
-      <div class="infog-stat">
-        <div class="infog-num amber" id="infog-f2-dermaga">0</div>
-        <div class="infog-label">Di<br>Dermaga</div>
-      </div>
-      <div class="infog-stat">
-        <div class="infog-num red" id="infog-f2-dup">0</div>
-        <div class="infog-label">Alert<br>Duplikat</div>
       </div>
     </div>
     <div class="infog-progress">
@@ -1396,7 +1396,7 @@ function getOrCreateSheet(name, headers) {
 // ║                                                                      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwBPJgRvEY26AnnUJsEUhOAbSfZGkYvYngRycHULnIxUWdnFStcn_W61iWKUMeCQl4/exec';
+const GS_APPS_SCRIPT_URL = '';
 // ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
 // Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
 
@@ -2241,9 +2241,9 @@ function applyRole(role){
   if(info.pos){
     S.currentPos = info.pos;
     setPos(info.pos);
-    // Kunci tombol pos agar tidak bisa diubah
-    document.getElementById('pos-f1').style.pointerEvents = role==='f1' ? 'none' : '';
-    document.getElementById('pos-f2').style.pointerEvents = role==='f2' ? 'none' : '';
+    // Sembunyikan pilihan pos untuk petugas - tidak perlu pilih, sudah otomatis
+    const posGrid = document.querySelector('.pos-grid');
+    if(posGrid) posGrid.style.display = 'none';
   }
 
   // Sembunyikan/tampilkan elemen manifes sesuai role
@@ -2344,6 +2344,9 @@ function logout(){
     const tab=document.getElementById('tab-'+p);
     if(tab && p!=='transit') tab.style.display='';
   });
+  // Tampilkan kembali pos-grid
+  const posGrid = document.querySelector('.pos-grid');
+  if(posGrid) posGrid.style.display='';
 }
 
 
@@ -2752,15 +2755,24 @@ function updateInfografis(){
     document.getElementById('infog-title').textContent='🚪 Filter 1 — Gerbang Trestle';
     se('infog-f1-lewat', lewatF1);
     se('infog-f1-sisa',  belum);
-    se('infog-f1-naik',  naik);
+    se('infog-f1-dup',   dup);
+    // Warna merah hanya jika ada duplikat
+    const dupEl = document.getElementById('infog-f1-dup');
+    if(dupEl) dupEl.className = 'infog-num ' + (dup > 0 ? 'red' : 'green');
   } else if(currentRole === 'f2'){
-    // F2: fokus pada yang naik kapal
     document.getElementById('infog-f1-stats').style.display='none';
     document.getElementById('infog-f2-stats').style.display='grid';
     document.getElementById('infog-title').textContent='⛵ Filter 2 — Tangga Kapal';
-    se('infog-f2-naik',    naik);
+    se('infog-f2-belum',   belum);
     se('infog-f2-dermaga', dermaga);
-    se('infog-f2-dup',     dup);
+    se('infog-f2-naik',    naik);
+
+    // Warna dinamis: belum masuk = amber jika ada, hijau jika 0
+    const belumEl = document.getElementById('infog-f2-belum');
+    if(belumEl) belumEl.className = 'infog-num ' + (belum > 0 ? 'amber' : 'green');
+    // Area dermaga = amber jika masih ada yang nunggu naik
+    const dermEl = document.getElementById('infog-f2-dermaga');
+    if(dermEl) dermEl.className = 'infog-num ' + (dermaga > 0 ? 'white' : 'green');
   }
 
   // Progress bar
