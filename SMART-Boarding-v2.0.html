@@ -1642,12 +1642,13 @@ function updateManifesStatusUI(){
 setInterval(updateManifesStatusUI, 30000);
 
 async function perbaruiManifes(){
-  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
-  if(!gsUrl){
-    showToast('Database Supabase belum dikonfigurasi · Hubungi Admin','error');
-    return;
+  if(!sb){
+    const ok = initSupabase();
+    if(!ok){
+      showToast('⚠️ Database Supabase belum dikonfigurasi · Hubungi Admin','error');
+      return;
+    }
   }
-  if(gsUrl) S.gs.url = gsUrl; // pastikan state ter-update
 
   // Tampilkan progress bar
   const progress      = document.getElementById('manifes-progress');
@@ -1750,10 +1751,16 @@ async function perbaruiManifes(){
 }
 
 async function loadManifesFromSheets(){
-  const btn = document.getElementById('btn-load-sheets');
+  const btn    = document.getElementById('btn-load-sheets');
   const status = document.getElementById('load-sheets-status');
-
-  if(!S.gs.url){
+  if(!sb){
+    const ok = initSupabase();
+    if(!ok){
+      if(status) status.innerHTML='<span style="color:var(--red)">⚠️ Database Supabase belum dikonfigurasi · Hubungi Admin</span>';
+      return;
+    }
+  }
+  if(false){ // legacy check
     status.innerHTML='<span style="color:var(--red)">⚠️ Database Supabase belum dikonfigurasi. Hubungi Admin.</span>';
     return;
   }
@@ -1968,11 +1975,23 @@ function applyRole(role){
 }
 
 async function autoInitPetugas(){
-  // Selalu tarik fresh dari Sheets saat login petugas
-  // (agar _status tidak terbawa dari sesi sebelumnya)
+  // Selalu tarik fresh dari Supabase saat login petugas
   if(!sb){
-    showToast('⚠️ Database belum dikonfigurasi · Hubungi Admin','warning');
-    return;
+    // Supabase belum dikonfigurasi - coba init ulang sekali
+    const ok = initSupabase();
+    if(!ok){
+      showToast('⚠️ Database belum dikonfigurasi · Isi SUPABASE_URL di index.html','warning');
+      // Tampilkan pesan di halaman manifes
+      const emptyBox = document.getElementById('manifes-empty-box');
+      if(emptyBox){
+        emptyBox.style.display = 'block';
+        const hint = emptyBox.querySelector('.slabel');
+        if(hint) hint.textContent = '⚠️ Database belum dikonfigurasi';
+        const desc = emptyBox.querySelector('div[style]');
+        if(desc) desc.innerHTML = 'Hubungi Admin untuk mengisi konfigurasi Supabase di file <b>index.html</b>';
+      }
+      return;
+    }
   }
 
   showToast('⏳ Memuat manifes...','warning');
@@ -2561,6 +2580,36 @@ function updateSbConfigStatus(){
     const nameEl = document.getElementById('gs-sheet-name-display');
     if(nameEl) nameEl.textContent = SUPABASE_URL;
   }
+}
+
+
+// ══════════════════════════════════════
+// APPLY MANIFES TO STATE
+// Terapkan hasil fetch ke state dan UI
+// ══════════════════════════════════════
+function applyManifesToState({ manifest, tipeKapal, namaKapal }){
+  S.manifest  = manifest;
+  S.shipType  = tipeKapal;
+  if(namaKapal){
+    S.ship.name = namaKapal;
+    const lbl = document.getElementById('ship-label');
+    if(lbl) lbl.textContent = namaKapal;
+  }
+  setManifesLoadTime();
+  saveState();
+  setShipType(tipeKapal);
+  updateManifestSummary();
+  // Delay render agar DOM siap setelah setShipType
+  setTimeout(()=>{
+    renderManifestTable();
+    updateManifesStatusUI();
+    updateInfografis();
+  }, 100);
+  const mSummary = document.getElementById('manifest-summary');
+  const mTable   = document.getElementById('manifest-table-card');
+  if(mSummary) mSummary.style.display = 'block';
+  if(mTable)   mTable.style.display   = 'block';
+  updateDashCounters();
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
