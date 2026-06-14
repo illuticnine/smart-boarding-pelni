@@ -1095,6 +1095,35 @@ function doPost(e) {
       data.rows.forEach(r => sh.appendRow(r));
     }
 
+    if (data.action === 'resetScanLog') {
+      // Arsip ScanLog aktif lalu kosongkan
+      const scanSh = SS.getSheetByName('ScanLog');
+      if (scanSh && scanSh.getLastRow() > 1) {
+        try {
+          const now = new Date();
+          const stamp = Utilities.formatDate(now, 'Asia/Makassar', 'yyyyMMdd_HHmm');
+          const arsipName = 'ScanLog_' + stamp;
+          const arsipSh = scanSh.copyTo(SS);
+          arsipSh.setName(arsipName);
+          arsipSh.setTabColor('#9E9E9E');
+          Logger.log('ScanLog diarsip ke: ' + arsipName);
+        } catch(archErr) {
+          Logger.log('Gagal arsip: ' + archErr.message);
+        }
+      }
+      // Kosongkan ScanLog aktif, tulis ulang header
+      if (scanSh) {
+        scanSh.clearContents();
+        const headers = ['Waktu','No Tiket','Nama','Pos','Status','Info','Tipe Kapal','Nama Kapal','Voyage'];
+        scanSh.appendRow(headers);
+        scanSh.getRange(1, 1, 1, headers.length)
+          .setBackground('#0A2342')
+          .setFontColor('#FFFFFF')
+          .setFontWeight('bold');
+      }
+      return makeResponse({ ok: true, msg: 'ScanLog berhasil diarsip dan dikosongkan' });
+    }
+
     if (data.action === 'updateStatus') {
       // Update status penumpang di sheet Manifes
       const sh = SS.getSheetByName('Manifes');
@@ -1304,7 +1333,7 @@ function getOrCreateSheet(name, headers) {
 // ║                                                                      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxWMHhCbjZSOG5BFq3n4t5a6PWUsyPFcFfbxLW2XU7e5NMaXOE3bFLx_rcEJirQXBU/exec';
+const GS_APPS_SCRIPT_URL = '';
 // ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
 // Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
 
@@ -3552,20 +3581,39 @@ async function syncManifes(){
 function saveSettings(){ saveState(); }
 
 // Reset hanya log scan & status boarding (manifes tetap)
-function resetScanOnly(){
-  if(!confirm('Reset Log Scan?\n\nRiwayat scan dan status boarding dihapus.\nManifes penumpang tetap tersimpan.')) return;
+async function resetScanOnly(){
+  if(!confirm('Reset Log Scan?\n\nRiwayat scan dan status boarding dihapus.\nScanLog di Google Sheets akan diarsip lalu dikosongkan.\nManifes penumpang tetap tersimpan.')) return;
+
+  // Reset data lokal
   S.scanLog=[];
   S.transitLog=[];
   S.lanjutanLog=[];
   S.dupAlerts=[];
-  // Reset _status semua penumpang ke pending
   S.manifest.forEach(p=>{ p._status='pending'; });
   saveState();
   updateDashboard();
   renderManifestTable();
   renderTransitList();
   renderLog();
-  showToast('✅ Log scan direset · Manifes tetap tersimpan','success');
+
+  // Sync ke Google Sheets - arsip lalu kosongkan ScanLog
+  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
+  if(gsUrl){
+    showToast('⏳ Mengarsip ScanLog di Sheets...','warning');
+    try{
+      const res = await gsPost({ action: 'resetScanLog' });
+      const data = JSON.parse(await res.text());
+      if(data.ok){
+        showToast('✅ Log scan direset · ScanLog Sheets diarsip · Manifes tetap','success');
+      } else {
+        showToast('✅ Reset lokal OK · Gagal arsip Sheets: '+(data.msg||'error'),'warning');
+      }
+    }catch(err){
+      showToast('✅ Reset lokal OK · Gagal sync ke Sheets: '+err.message,'warning');
+    }
+  } else {
+    showToast('✅ Log scan direset · Manifes tetap tersimpan','success');
+  }
 }
 
 // Reset semua termasuk manifes (mulai dari awal total)
