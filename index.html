@@ -1214,8 +1214,20 @@ function getOrCreateSheet(name, headers) {
         Penyebab paling umum adalah pengaturan deploy yang salah di Apps Script.
       </div>
 
-      <button class="btn btn-sm" style="background:var(--red-lt);color:var(--red);margin-bottom:12px" onclick="resetAppData()">🗑 Reset Semua Data Aplikasi (Clear Cache)</button>
-      <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">Gunakan jika ada data lama yang mengganggu atau setelah update versi aplikasi.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <button class="btn btn-sm" style="background:#FFF8E1;color:#F57F17;border:1px solid #FFE082"
+                onclick="resetScanOnly()">
+          🔄 Reset Log Scan
+        </button>
+        <button class="btn btn-sm" style="background:var(--red-lt);color:var(--red)"
+                onclick="resetAllData()">
+          🗑 Reset Semua + Manifes
+        </button>
+      </div>
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px;line-height:1.6">
+        <b>Reset Log Scan</b> — hapus riwayat scan & status boarding, manifes tetap.<br>
+        <b>Reset Semua + Manifes</b> — hapus semua data termasuk manifes (mulai dari awal).
+      </div>
       <b>Checklist wajib:</b>
       <div style="margin:8px 0 0 4px">
         ☐ &nbsp;<b>Who has access</b> diset ke <i>Anyone</i> (bukan "Anyone with Google account")<br>
@@ -1281,7 +1293,7 @@ function getOrCreateSheet(name, headers) {
 // ║                                                                      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxWMHhCbjZSOG5BFq3n4t5a6PWUsyPFcFfbxLW2XU7e5NMaXOE3bFLx_rcEJirQXBU/exec';
+const GS_APPS_SCRIPT_URL = '';
 // ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
 // Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
 
@@ -3528,16 +3540,32 @@ async function syncManifes(){
 
 function saveSettings(){ saveState(); }
 
-function resetAppData(){
-  if(!confirm('Reset semua data? (Log Scan, Status Boarding akan direset. Manifes tetap tersimpan, pengaturan kapal & Google Sheets tetap.)')) return;
-  // Reset scan log dan alerts
+// Reset hanya log scan & status boarding (manifes tetap)
+function resetScanOnly(){
+  if(!confirm('Reset Log Scan?\n\nRiwayat scan dan status boarding dihapus.\nManifes penumpang tetap tersimpan.')) return;
   S.scanLog=[];
   S.transitLog=[];
   S.lanjutanLog=[];
   S.dupAlerts=[];
-  // Reset _status semua penumpang di manifes ke 'pending'
+  // Reset _status semua penumpang ke pending
   S.manifest.forEach(p=>{ p._status='pending'; });
-  S._manifesLoadedAt = null;
+  saveState();
+  updateDashboard();
+  renderManifestTable();
+  renderTransitList();
+  renderLog();
+  showToast('✅ Log scan direset · Manifes tetap tersimpan','success');
+}
+
+// Reset semua termasuk manifes (mulai dari awal total)
+function resetAllData(){
+  if(!confirm('Reset SEMUA data?\n\nManifes, log scan, dan semua data akan dihapus.\nPengaturan kapal & URL Google Sheets tetap.')) return;
+  S.scanLog=[];
+  S.transitLog=[];
+  S.lanjutanLog=[];
+  S.dupAlerts=[];
+  S.manifest=[];
+  S._manifesLoadedAt=null;
   saveState();
   updateDashboard();
   renderManifestTable();
@@ -3545,8 +3573,11 @@ function resetAppData(){
   renderLog();
   document.getElementById('manifest-table-card').style.display='none';
   document.getElementById('manifest-summary').style.display='none';
-  showToast('✅ Data berhasil direset','success');
+  showToast('✅ Semua data direset','success');
 }
+
+// Alias untuk kompatibilitas
+function resetAppData(){ resetAllData(); }
 
 // ══════════════════════════════════════════
 // TOAST
