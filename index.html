@@ -624,7 +624,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
         <thead><tr>
           <th>#</th><th>No Tiket</th><th>Nama Penumpang</th>
           <th>Kelas</th><th>Asal</th><th>Tujuan</th>
-          <th>Kategori</th><th>Umur (Th)</th><th>Status</th><th>Pos</th>
+          <th>Kat.</th><th>Umur(Th)</th><th>Umur(Bln)</th><th>Status</th><th>Pos</th>
         </tr></thead>
         <tbody id="tbody-penumpang"></tbody>
       </table>
@@ -1185,7 +1185,7 @@ function getOrCreateSheet(name, headers) {
 // ║                                                                      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxzqihEZmtUEH6fKLA3UYy8HhEr-fJOjb2WY5ot-E8j-lUMOXDcW_cBxzhB3fNsfbQ/exec';
+const GS_APPS_SCRIPT_URL = '';
 // ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
 // Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
 
@@ -2182,7 +2182,11 @@ async function fetchManifesFromGS(){
     .filter(r=>r.some(c=>String(c).trim()!==''))
     .map(row=>{
       const o={};
-      rawHeaders.forEach((h,i)=>{ o[h]=row[i]!==undefined?row[i]:''; });
+      rawHeaders.forEach((h,i)=>{ 
+        // Konversi semua nilai ke string kecuali yang perlu jadi angka
+        const val = row[i];
+        o[h] = val !== undefined && val !== null ? val : '';
+      });
       return o;
     })
     .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
@@ -2536,9 +2540,10 @@ async function parsePDF(file){
       document.getElementById('manifest-table-card').style.display='block';
 
       // Breakdown kategori
-      const dws = unique.filter(r=>r.KATEGORI==='DEWASA').length;
-      const anak = unique.filter(r=>r.KATEGORI==='ANAK').length;
-      const bayi = unique.filter(r=>r.KATEGORI==='BAYI').length;
+      const normKat = r => (r.KATEGORI||r['Kategori']||'').toString().toUpperCase().trim();
+      const dws = unique.filter(r=>{ const k=normKat(r); return k==='DWS'||k==='DEWASA'||k==='D'; }).length;
+      const anak = unique.filter(r=>{ const k=normKat(r); return k==='ANAK'||k==='ANK'||k==='A'; }).length;
+      const bayi = unique.filter(r=>{ const k=normKat(r); return k==='BAYI'||k==='BY'||k==='B'; }).length;
       const tujList = [...new Set(unique.map(r=>r.TUJUAN).filter(Boolean))].join(', ');
 
       showToast(`✅ ${unique.length} penumpang · DWS:${dws} ANAK:${anak} BAYI:${bayi}`,'success');
@@ -2661,15 +2666,29 @@ function renderManifestTable(){
       const tujuan = p.TUJUAN||p['Pel. Tujuan']||p['PELABUHAN TUJUAN']||'—';
       const asal = p.ASAL||p['Pel. Awal']||p['PELABUHAN ASAL']||'—';
       const kelas = p.KELAS||p['KELAS EKONOMI']||'—';
-      // USIA dari Sheets (data tarik), UMUR_TAHUN dari PDF parse (upload langsung)
-      const umurVal = p.UMUR_TAHUN||p.USIA||p['USIA']||'';
-      const umur = umurVal ? umurVal+' th' : '—';
+      // Umur Tahun: dari PDF (UMUR_TAHUN) atau Sheets (USIA)
+      const umurThRaw = p.UMUR_TAHUN !== undefined && p.UMUR_TAHUN !== ''
+                        ? p.UMUR_TAHUN
+                        : (p.USIA !== undefined && p.USIA !== '' ? p.USIA : '');
+      const umurTh = (umurThRaw !== '' && umurThRaw !== null && umurThRaw !== undefined)
+                     ? String(umurThRaw) : '—';
+      // Umur Bulan: dari PDF (UMUR_BULAN) atau Sheets (USIA_BULAN)
+      const umurBlnRaw = p.UMUR_BULAN !== undefined && p.UMUR_BULAN !== ''
+                         ? p.UMUR_BULAN
+                         : (p.USIA_BULAN !== undefined && p.USIA_BULAN !== '' ? p.USIA_BULAN : '');
+      const umurBln = (umurBlnRaw !== '' && umurBlnRaw !== null && umurBlnRaw !== undefined)
+                      ? String(umurBlnRaw) : '—';
       const posChip=scan?`<span class="chip ${scan.pos==='F1'?'cf1':'cf2'}">${scan.pos}</span>`:'—';
       let katBadge='';
-      if(kat==='BAYI') katBadge='<span class="badge bp" style="font-size:10px">👶 BAYI</span>';
-      else if(kat==='ANAK') katBadge='<span class="badge ba" style="font-size:10px">🧒 ANAK</span>';
-      else if(kat==='DEWASA') katBadge='<span class="badge bb" style="font-size:10px">🧑 DWS</span>';
-      else katBadge=`<span class="badge bgr" style="font-size:10px">${kat}</span>`;
+      const katUp = (kat||'').toString().toUpperCase().trim();
+      if(katUp==='BAYI'||katUp==='BY'||katUp==='B')
+        katBadge='<span class="badge bp" style="font-size:10px">👶 BAYI</span>';
+      else if(katUp==='ANAK'||katUp==='ANK'||katUp==='A'||katUp==='CHILD')
+        katBadge='<span class="badge ba" style="font-size:10px">🧒 ANAK</span>';
+      else if(katUp==='DWS'||katUp==='DEWASA'||katUp==='D'||katUp==='ADULT')
+        katBadge='<span class="badge bb" style="font-size:10px">🧑 DWS</span>';
+      else if(katUp)
+        katBadge=`<span class="badge bgr" style="font-size:10px">${kat}</span>`;
       return `<tr>
         <td style="color:var(--gray-400);font-size:11px">${i+1}</td>
         <td style="font-family:monospace;font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ticket}">${ticket||'—'}</td>
@@ -2678,7 +2697,8 @@ function renderManifestTable(){
         <td style="font-size:11px">${asal}</td>
         <td style="font-size:11px;font-weight:600">${tujuan}</td>
         <td>${katBadge}</td>
-        <td style="font-size:11px;text-align:center">${umur}</td>
+        <td style="font-size:11px;text-align:center">${umurTh}</td>
+        <td style="font-size:11px;text-align:center;color:var(--gray-500)">${umurBln}</td>
         <td><span class="sdot ${dc}"></span><span style="font-size:11px">${sl}</span></td>
         <td>${posChip}</td>
       </tr>`;
@@ -2712,9 +2732,10 @@ function updateDashCounters(){
   document.getElementById('d-f1').textContent='Filter 1: '+f1+' scan valid';
   document.getElementById('d-f2').textContent='Filter 2: '+f2+' scan valid';
   // Perintis breakdown
-  const dws=S.manifest.filter(p=>(p.Kategori||p.KATEGORI||'').toUpperCase()==='DWS').length;
-  const anak=S.manifest.filter(p=>(p.Kategori||p.KATEGORI||'').toUpperCase()==='ANAK').length;
-  const bayi=S.manifest.filter(p=>(p.Kategori||p.KATEGORI||'').toUpperCase()==='BAYI').length;
+  const normK = p => (p.Kategori||p['Kategori']||p.KATEGORI||'').toString().toUpperCase().trim();
+  const dws=S.manifest.filter(p=>{ const k=normK(p); return k==='DWS'||k==='DEWASA'||k==='D'; }).length;
+  const anak=S.manifest.filter(p=>{ const k=normK(p); return k==='ANAK'||k==='ANK'||k==='A'; }).length;
+  const bayi=S.manifest.filter(p=>{ const k=normK(p); return k==='BAYI'||k==='BY'||k==='B'; }).length;
   document.getElementById('d-dws').textContent=dws;
   document.getElementById('d-anak').textContent=anak;
   document.getElementById('d-bayi').textContent=bayi;
@@ -3242,7 +3263,7 @@ async function syncManifes(){
     const isPerintis=S.shipType==='perintis';
     const headers=isPerintis
       ?['Nama Kapal','No Tiket','Pel. Asal','Pel. Tujuan','Tgl Etd','Nama Pnp','Jen. Kelamin','Kategori','Status']
-      :['NO_TIKET','NAMA','KELAS','KATEGORI','ASAL','TUJUAN','JEN_KELAMIN','USIA','NO_IDENTITAS','Status'];
+      :['NO_TIKET','NAMA','KELAS','KATEGORI','ASAL','TUJUAN','JEN_KELAMIN','USIA','USIA_BULAN','NO_IDENTITAS','Status'];
     const rows=S.manifest.map(p=>isPerintis
       ?[p['Nama Kapal']||'',p['No Tiket']||p.NO_TIKET||'',
         p['Pel. Awal']||p['Pel. Asal']||'',
@@ -3252,7 +3273,7 @@ async function syncManifes(){
         p.KATEGORI||'',
         p.ASAL||p['Pel. Awal']||'',
         p.TUJUAN||p['Pel. Tujuan']||'',p.JEN_KELAMIN||p['Jen. Kelamin']||'',
-        p.UMUR_TAHUN||p.USIA||'',p.NO_IDENTITAS||'',p._status||'pending']
+        String(p.UMUR_TAHUN||p.USIA||''),String(p.UMUR_BULAN||''),p.NO_IDENTITAS||'',p._status||'pending']
     );
     await gsPost({action:'uploadManifes',headers,rows});
     showToast('✅ Manifes '+S.manifest.length+' penumpang berhasil diupload','success');
