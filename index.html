@@ -2,6 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0"/>
 <title>SMART-Boarding v2.0 — Pelni Kendari</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -398,7 +399,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     <div class="nav-tab" onclick="showPage('dashboard')" id="tab-dashboard">📊 Dashboard</div>
     <div class="nav-tab" onclick="showPage('transit')" id="tab-transit" style="display:none">🔄 Transit</div>
     <div class="nav-tab" onclick="showPage('log')" id="tab-log">📜 Log</div>
-    <div class="nav-tab" onclick="showPage('gsheets')" id="tab-gsheets">☁️ Google Sheets</div>
+    <div class="nav-tab" onclick="showPage('gsheets')" id="tab-gsheets">🗄️ Database</div>
   </nav>
 </header>
 
@@ -1385,22 +1386,18 @@ function getOrCreateSheet(name, headers) {
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║           ⚙️  KONFIGURASI WAJIB — ISI SEBELUM DEPLOY               ║
 // ╠══════════════════════════════════════════════════════════════════════╣
-// ║                                                                      ║
-// ║  LANGKAH 1: Isi URL Apps Script Google Sheets di bawah ini          ║
-// ║  Cara dapatkan URL:                                                  ║
-// ║    - Buka Google Sheets → Extensions → Apps Script                  ║
-// ║    - Klik Deploy → Manage deployments                                ║
-// ║    - Copy URL yang diawali https://script.google.com/...            ║
-// ║                                                                      ║
+// ║  LANGKAH 1: Isi Supabase URL dan Anon Key dari dashboard Supabase   ║
+// ║    - Buka supabase.com → Project → Settings → API                   ║
+// ║    - Copy Project URL dan anon public key                            ║
 // ║  LANGKAH 2: Ganti PIN sesuai kebutuhan                              ║
-// ║                                                                      ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwBPJgRvEY26AnnUJsEUhOAbSfZGkYvYngRycHULnIxUWdnFStcn_W61iWKUMeCQl4/exec';
-// ↑↑↑ PASTE URL APPS SCRIPT DI ANTARA TANDA KUTIP DI ATAS ↑↑↑
-// Contoh: const GS_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfyc.../exec';
+const SUPABASE_URL  = '';  // ← PASTE Project URL  (https://xxx.supabase.co)
+const SUPABASE_ANON = '';  // ← PASTE anon public key
+const APP_VERSION   = 'v2.0';
 
-const APP_VERSION = 'v2.0';
+// Legacy — tidak dipakai lagi (Supabase menggantikan Google Sheets)
+const GS_APPS_SCRIPT_URL = '';
 
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
@@ -1409,6 +1406,31 @@ const PINS = {
   f2    : '2222',   // ← ganti PIN Petugas F2 (Tangga Kapal)
 };
 // ↑↑↑ GANTI ANGKA PIN DI ATAS SEBELUM DEPLOY ↑↑↑
+
+// ── Inisialisasi Supabase client ──────────────────────────────
+let sb = null;  // Supabase client, diinit saat DOMContentLoaded
+
+function initSupabase(){
+  if(!SUPABASE_URL || !SUPABASE_ANON){
+    console.warn('[SMART-Boarding] Supabase belum dikonfigurasi');
+    return false;
+  }
+  try{
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    console.log('[SMART-Boarding] Supabase client OK');
+    return true;
+  }catch(e){
+    console.error('[SMART-Boarding] Supabase init error:', e);
+    return false;
+  }
+}
+
+// Helper: buat sesi_id dari nama kapal + voyage
+function getSesiId(){
+  const name   = (S.ship.name   || 'UNKNOWN').replace(/\s+/g,'_').toUpperCase();
+  const voyage = (S.ship.voyage || '000').replace(/\s+/g,'');
+  return name + '_' + voyage;
+}
 
 // Konfigurasi akses menu per role
 const ROLE_ACCESS = {
@@ -1737,10 +1759,8 @@ function processTicket(ticketNo){
   renderManifestTable();
   updateInfografis();
 
-  // Auto-sync to Google Sheets
-  if(S.gs.connected && S.gs.autoSync){
-    gsPost({action:'addLog',...entry}).catch(()=>{});
-  }
+  // Simpan ke Supabase (real-time)
+  sbAddLog(entry);
 }
 
 function getName(pax){
@@ -2310,19 +2330,10 @@ function applyRole(role){
 async function autoInitPetugas(){
   // Selalu tarik fresh dari Sheets saat login petugas
   // (agar _status tidak terbawa dari sesi sebelumnya)
-  const gsUrl = (GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim())
-                || (S.gs.url && S.gs.url.trim())
-                || '';
-
-  if(!gsUrl){
-    // URL belum dikonfigurasi — tampilkan form input darurat
-    showUrlInputDialog();
+  if(!sb){
+    showToast('⚠️ Database belum dikonfigurasi · Hubungi Admin','warning');
     return;
   }
-
-  // Pastikan state ter-update dengan URL yang valid
-  S.gs.url = gsUrl;
-  S.gs.connected = true;
 
   showToast('⏳ Memuat manifes...','warning');
   try{
@@ -2365,158 +2376,16 @@ function logout(){
 
 // ── Fetch manifes terpusat ──────────────────────────
 async function fetchManifesFromGS(){
-  // Pakai konstanta langsung (prioritas) atau fallback ke state
-  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
-  if(!gsUrl) throw new Error('URL Google Sheets belum dikonfigurasi · Hubungi Admin');
-  let res;
-  try{
-    res = await fetch(gsUrl+'?action=getManifes&t='+Date.now(),{
-      method:'GET', redirect:'follow', cache:'no-store'
-    });
-  }catch(netErr){
-    throw new Error('Tidak dapat terhubung · Periksa koneksi internet');
-  }
-  if(!res.ok) throw new Error('Server error: HTTP '+res.status);
-  let data;
-  try{ data = JSON.parse(await res.text()); }
-  catch(e){ throw new Error('Response tidak valid dari Google Sheets'); }
-  if(!data.ok) throw new Error(data.msg||'Gagal mengambil data dari Sheets');
-  if(!data.rows||data.rows.length<2) throw new Error('Sheet Manifes kosong — Admin belum upload manifes');
-
-  // Log debug info dari server jika ada
-  if(data.debug) console.log('[SMART-Boarding] Server debug:', JSON.stringify(data.debug));
-
-  // Normalisasi header — hapus spasi, konversi untuk pengecekan
-  const rawHeaders = data.rows[0].map(h=>String(h||'').trim());
-  const headersUpper = rawHeaders.map(h=>h.toUpperCase().replace(/[\s\.]/g,'_'));
-
-  // Debug: log headers ke console untuk diagnosis
-  console.log('[SMART-Boarding] Headers dari Sheets:', rawHeaders);
-
-  // Deteksi tiket — lebih toleran
-  const hasTicket = rawHeaders.some(h=>{
-    const u = h.toUpperCase().replace(/[\s\.]/g,'_');
-    return ['NO_TIKET','NO__TIKET','TIKET','TICKET'].includes(u)
-      || h === 'No Tiket' || h === 'NO_TIKET';
-  });
-
-  // Deteksi tipe kapal dari berbagai kemungkinan header
-  const isPerintis = rawHeaders.some(h=>{
-    const u = h.toUpperCase().replace(/[\s\.]/g,'_');
-    return ['NAMA_PNP','KATEGORI','TGL_ETD','NAMA_KAPAL'].includes(u)
-      || ['Nama Pnp','Kategori','Tgl Etd','Nama Kapal'].includes(h);
-  });
-  const tipeKapal = isPerintis ? 'perintis' : 'penumpang';
-
-  // Jika tidak ditemukan header tiket, beri pesan lebih informatif
-  if(!hasTicket){
-    const headerStr = rawHeaders.slice(0,6).join(' | ');
-    console.error('[SMART-Boarding] Header tidak dikenali:', rawHeaders);
-    throw new Error(
-      'Format manifes tidak dikenali\n' +
-      'Header: ' + headerStr + '\n' +
-      'Pastikan Admin upload ulang manifes terbaru'
-    );
-  }
-
-  const manifest = data.rows.slice(1)
-    .filter(r=>r.some(c=>String(c).trim()!==''))
-    .map(row=>{
-      const o={};
-      rawHeaders.forEach((h,i)=>{
-        const val = row[i];
-        // Simpan nilai apa adanya (termasuk 0 untuk umur bayi)
-        o[h] = (val !== undefined && val !== null) ? val : '';
-        // Juga buat alias lowercase untuk toleransi nama field
-        const hLow = h.toLowerCase();
-        if(hLow !== h) o[hLow] = o[h];
-      });
-      return o;
-    })
-    .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
-
-  if(!manifest.length) throw new Error('Tidak ada data penumpang yang valid di Sheets');
-
-  const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
-  console.log('[SMART-Boarding] Tipe:', tipeKapal, '| Penumpang:', manifest.length, '| Kapal:', namaKapal);
+  // Sekarang menggunakan Supabase — nama fungsi dipertahankan untuk kompatibilitas
+  if(!sb) throw new Error('Supabase belum dikonfigurasi · Hubungi Admin');
+  const manifest = await sbGetManifes();
+  // Deteksi tipe dari data yang kembali
+  const hasPerintisField = manifest.length > 0 && (manifest[0]['Nama Kapal'] || manifest[0]['Tgl Etd']);
+  const tipeKapal = hasPerintisField ? 'perintis' : (S.shipType || 'perintis');
+  const namaKapal = S.ship.name || (manifest[0] && manifest[0]['Nama Kapal']) || '';
   return { manifest, tipeKapal, namaKapal };
 }
 
-function applyManifesToState({manifest, tipeKapal, namaKapal}){
-  S.manifest = manifest; S.shipType = tipeKapal;
-  if(namaKapal){
-    S.ship.name = namaKapal;
-    const lbl = document.getElementById('ship-label');
-    if(lbl) lbl.textContent = namaKapal;
-  }
-  setManifesLoadTime(); saveState();
-  setShipType(tipeKapal);
-  updateManifestSummary();
-  // Delay render agar DOM sudah siap setelah setShipType mengubah display
-  setTimeout(()=>{
-    renderManifestTable();
-    updateManifesStatusUI();
-    updateInfografis();
-  }, 100);
-  document.getElementById('manifest-summary').style.display='block';
-  document.getElementById('manifest-table-card').style.display='block';
-  updateDashCounters();
-}
-
-
-// ── Dialog input URL darurat (jika URL belum di-hardcode) ──
-function showUrlInputDialog(){
-  // Cek apakah sudah ada dialog
-  if(document.getElementById('url-input-dialog')) return;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'url-input-dialog';
-  overlay.style.cssText = [
-    'position:fixed','top:0','right:0','bottom:0','left:0',
-    'z-index:10000','background:rgba(0,0,0,.7)',
-    'display:flex','align-items:center','justify-content:center',
-    'padding:20px','box-sizing:border-box'
-  ].join(';');
-
-  overlay.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:24px;
-                width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.3)">
-      <div style="font-size:16px;font-weight:700;color:#1565C0;margin-bottom:8px">
-        ⚙️ Konfigurasi Google Sheets
-      </div>
-      <div style="font-size:12px;color:#666;margin-bottom:16px;line-height:1.6">
-        URL Google Sheets belum dikonfigurasi di file aplikasi.<br>
-        Masukkan URL Apps Script untuk melanjutkan, atau hubungi Admin.
-      </div>
-      <label style="font-size:11px;font-weight:600;color:#333;display:block;margin-bottom:6px">
-        URL Google Apps Script
-      </label>
-      <input type="url" id="dialog-gs-url"
-        placeholder="https://script.google.com/macros/s/.../exec"
-        style="width:100%;box-sizing:border-box;padding:10px 12px;
-               border:2px solid #e0e0e0;border-radius:8px;
-               font-size:12px;outline:none;margin-bottom:12px"
-        value="${S.gs.url||''}"
-        onfocus="this.style.borderColor='#1565C0'"
-        onblur="this.style.borderColor='#e0e0e0'"/>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <button onclick="document.getElementById('url-input-dialog').remove()"
-          style="padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;
-                 background:#fff;color:#666;font-size:13px;cursor:pointer">
-          Batal
-        </button>
-        <button onclick="applyUrlFromDialog()"
-          style="padding:10px;border:none;border-radius:8px;
-                 background:#1565C0;color:#fff;font-size:13px;
-                 font-weight:700;cursor:pointer">
-          Simpan & Muat
-        </button>
-      </div>
-    </div>`;
-
-  document.body.appendChild(overlay);
-  setTimeout(()=>{ const inp=document.getElementById('dialog-gs-url'); if(inp) inp.focus(); },300);
-}
 
 async function applyUrlFromDialog(){
   const inp = document.getElementById('dialog-gs-url');
@@ -2555,21 +2424,16 @@ async function refreshDashboardFromSheets(){
   const syncEl = document.getElementById('dash-last-sync');
   if(btn){ btn.disabled=true; btn.textContent='⏳ Memuat...'; }
 
-  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
-  if(!gsUrl){
-    showToast('URL Google Sheets belum dikonfigurasi','error');
+  if(!sb){
+    showToast('Supabase belum dikonfigurasi','error');
     if(btn){ btn.disabled=false; btn.textContent='🔄 Refresh'; }
     return;
   }
 
   try{
-    const url = gsUrl + '?action=getScanLog&t=' + Date.now();
-    const res = await fetch(url, { method:'GET', redirect:'follow', cache:'no-store' });
-    const data = JSON.parse(await res.text());
+    const data = await sbGetScanStats();
 
-    if(!data.ok) throw new Error(data.msg || 'Gagal ambil data');
-
-    // Update counter dashboard dari Sheets
+    // Update counter dashboard dari Supabase
     const total = S.manifest.length;
     const naik  = data.naik  || 0;
     const f1    = data.f1    || 0;
@@ -2701,20 +2565,17 @@ function stopPetugasStatusRefresh(){
 async function refreshStatusFromSheets(){
   // Hanya untuk petugas (bukan admin) dan hanya jika ada koneksi Sheets
   if(currentRole === 'admin' || currentRole === null) return;
-  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
-  if(!gsUrl || !S.manifest.length) return;
+  if(!sb || !S.manifest.length) return;
 
   try{
-    const url = gsUrl + '?action=getScanLog&t=' + Date.now();
-    const res = await fetch(url, { method:'GET', redirect:'follow', cache:'no-store' });
-    const data = JSON.parse(await res.text());
-    if(!data.ok || !data.rows) return;
+    const data = await sbGetScanStats();
+    if(!data.rows) return;
 
-    // Update _status manifes dari scanLog Sheets
+    // Update _status manifes dari scanLog Supabase
     let changed = false;
     data.rows.forEach(log => {
-      const ticket = String(log['No Tiket']||'').trim();
-      const status = String(log['Status']||'').trim();
+      const ticket = String(log.no_tiket||'').trim();
+      const status = String(log.status||'').trim();
       if(!ticket) return;
 
       const pax = S.manifest.find(p =>
@@ -2802,6 +2663,232 @@ function updateInfografis(){
   se('infog-prog-pct',   pct+'%');
 }
 
+
+// ══════════════════════════════════════════════════════════════
+// SUPABASE — FUNGSI DATABASE
+// Menggantikan gsPost / Google Sheets sepenuhnya
+// ══════════════════════════════════════════════════════════════
+
+// ── SCAN LOG ──────────────────────────────────────────────────
+async function sbAddLog(entry){
+  if(!sb) return;
+  try{
+    await sb.from('scan_log').insert({
+      sesi_id    : getSesiId(),
+      waktu      : entry.time,
+      no_tiket   : entry.ticket,
+      nama       : entry.name,
+      pos        : entry.pos,
+      status     : entry.status,
+      info       : entry.info || '',
+      tipe_kapal : entry.shipType || S.shipType,
+      nama_kapal : S.ship.name || '',
+      voyage     : S.ship.voyage || '',
+    });
+  }catch(e){ console.warn('[SB] addLog error:', e.message); }
+}
+
+async function sbGetScanLog(){
+  if(!sb) return { data:[], error:'no client' };
+  const sesiId = getSesiId();
+  return await sb.from('scan_log')
+    .select('*')
+    .eq('sesi_id', sesiId)
+    .order('created_at', { ascending: false })
+    .limit(1000);
+}
+
+// ── MANIFES ───────────────────────────────────────────────────
+async function sbUploadManifes(manifest, tipeKapal){
+  if(!sb) return false;
+  const sesiId = getSesiId();
+  try{
+    // Arsip scan_log sesi ini dulu
+    await sbArsipScanLog(sesiId);
+
+    // Hapus manifes lama untuk sesi ini
+    await sb.from('manifes').delete().eq('sesi_id', sesiId);
+
+    // Insert manifes baru dalam batch 50 baris
+    const rows = manifest.map(p => ({
+      sesi_id     : sesiId,
+      no_tiket    : (p['No Tiket']||p.NO_TIKET||'').toString().trim(),
+      nama        : p['Nama Pnp']||p.NAMA||p['NAMA']||'',
+      kelas       : p.KELAS||p['Kelas']||'',
+      kategori    : p.KATEGORI||p['Kategori']||'',
+      asal        : p.ASAL||p['Pel. Awal']||p['Pel. Asal']||'',
+      tujuan      : p.TUJUAN||p['Pel. Tujuan']||'',
+      jen_kelamin : p.JEN_KELAMIN||p['Jen. Kelamin']||'',
+      usia        : String(p.UMUR_TAHUN||p.USIA||''),
+      usia_bulan  : String(p.UMUR_BULAN||p.USIA_BULAN||''),
+      no_identitas: p.NO_IDENTITAS||'',
+      tgl_etd     : p['Tgl Etd']||'',
+      nama_kapal  : p['Nama Kapal']||S.ship.name||'',
+      tipe_kapal  : tipeKapal,
+      status      : p._status||'pending',
+    }));
+
+    // Batch insert 50 per request
+    for(let i=0; i<rows.length; i+=50){
+      const batch = rows.slice(i, i+50);
+      const { error } = await sb.from('manifes').insert(batch);
+      if(error) throw error;
+    }
+
+    // Catat sesi kapal
+    await sb.from('sesi_kapal').upsert({
+      sesi_id    : sesiId,
+      nama_kapal : S.ship.name||'',
+      voyage     : S.ship.voyage||'',
+      tipe_kapal : tipeKapal,
+      status     : 'aktif',
+    }, { onConflict: 'sesi_id' });
+
+    return true;
+  }catch(e){
+    console.error('[SB] uploadManifes error:', e.message);
+    return false;
+  }
+}
+
+async function sbGetManifes(){
+  if(!sb) throw new Error('Supabase belum dikonfigurasi');
+  const sesiId = getSesiId();
+
+  // Cari sesi aktif jika sesi_id belum ada (kapal belum diatur)
+  let targetSesiId = sesiId;
+  if(!S.ship.name && !S.ship.voyage){
+    const { data: sesiList } = await sb.from('sesi_kapal')
+      .select('sesi_id,nama_kapal,voyage,tipe_kapal')
+      .eq('status','aktif')
+      .order('created_at',{ascending:false})
+      .limit(1);
+    if(sesiList && sesiList.length > 0){
+      targetSesiId = sesiList[0].sesi_id;
+      S.ship.name   = sesiList[0].nama_kapal;
+      S.ship.voyage = sesiList[0].voyage;
+      S.shipType    = sesiList[0].tipe_kapal;
+    }
+  }
+
+  const { data, error } = await sb.from('manifes')
+    .select('*')
+    .eq('sesi_id', targetSesiId)
+    .order('id');
+
+  if(error) throw new Error(error.message);
+  if(!data || data.length === 0) throw new Error('Manifes kosong — Admin belum upload manifes');
+
+  // Konversi ke format yang dikenal render
+  return data.map(r => ({
+    'No Tiket'    : r.no_tiket,
+    'Nama Pnp'    : r.nama,
+    NO_TIKET      : r.no_tiket,
+    NAMA          : r.nama,
+    KELAS         : r.kelas,
+    KATEGORI      : r.kategori,
+    'Kategori'    : r.kategori,
+    ASAL          : r.asal,
+    'Pel. Awal'   : r.asal,
+    TUJUAN        : r.tujuan,
+    'Pel. Tujuan' : r.tujuan,
+    JEN_KELAMIN   : r.jen_kelamin,
+    'Jen. Kelamin': r.jen_kelamin,
+    UMUR_TAHUN    : r.usia,
+    USIA          : r.usia,
+    UMUR_BULAN    : r.usia_bulan,
+    USIA_BULAN    : r.usia_bulan,
+    'Tgl Etd'     : r.tgl_etd,
+    'Nama Kapal'  : r.nama_kapal,
+    _status       : r.status || 'pending',
+    _sbId         : r.id,
+  }));
+}
+
+// ── SCAN LOG STATS (untuk dashboard Admin & infografis petugas) ──
+async function sbGetScanStats(){
+  if(!sb) return { naik:0, f1:0, dup:0, total:0 };
+  const sesiId = getSesiId();
+  const { data } = await sb.from('scan_log')
+    .select('status,pos')
+    .eq('sesi_id', sesiId);
+  if(!data) return { naik:0, f1:0, dup:0, total:0 };
+  return {
+    naik  : data.filter(r=>r.status==='NAIK').length,
+    f1    : data.filter(r=>r.pos==='F1'&&r.status==='OK').length,
+    dup   : data.filter(r=>r.status==='DUPLIKAT').length,
+    total : data.length,
+    rows  : data,
+  };
+}
+
+// ── ARSIP SCAN LOG ────────────────────────────────────────────
+async function sbArsipScanLog(sesiId){
+  if(!sb) return;
+  try{
+    // Tandai sesi lama sebagai arsip
+    await sb.from('sesi_kapal')
+      .update({ status: 'arsip' })
+      .eq('sesi_id', sesiId);
+  }catch(e){ console.warn('[SB] arsip error:', e.message); }
+}
+
+async function sbResetScanLog(){
+  if(!sb) return false;
+  const sesiId = getSesiId();
+  try{
+    await sbArsipScanLog(sesiId);
+    // Hapus scan_log sesi ini
+    await sb.from('scan_log').delete().eq('sesi_id', sesiId);
+    return true;
+  }catch(e){
+    console.error('[SB] resetScanLog error:', e.message);
+    return false;
+  }
+}
+
+// ── PENUMPANG LANJUTAN ────────────────────────────────────────
+async function sbAddLanjutan(ticket, waktu, tanggal){
+  if(!sb) return;
+  try{
+    await sb.from('penumpang_lanjutan').insert({
+      sesi_id  : getSesiId(),
+      no_tiket : ticket,
+      waktu, tanggal,
+      kapal    : S.ship.name||'',
+      voyage   : S.ship.voyage||'',
+    });
+  }catch(e){ console.warn('[SB] addLanjutan error:', e.message); }
+}
+
+// ── REAL-TIME SUBSCRIPTION ────────────────────────────────────
+let _sbChannel = null;
+
+function sbSubscribeScanLog(callback){
+  if(!sb) return;
+  const sesiId = getSesiId();
+  _sbChannel = sb.channel('scan_log_'+sesiId)
+    .on('postgres_changes',{
+      event: 'INSERT', schema: 'public', table: 'scan_log',
+      filter: 'sesi_id=eq.'+sesiId,
+    }, payload => callback(payload.new))
+    .subscribe();
+  console.log('[SB] Subscribed to scan_log realtime');
+}
+
+function sbUnsubscribe(){
+  if(_sbChannel){ sb.removeChannel(_sbChannel); _sbChannel=null; }
+}
+
+// ── KONEKSI TEST ──────────────────────────────────────────────
+async function sbTestConnection(){
+  if(!sb) return false;
+  try{
+    const { error } = await sb.from('sesi_kapal').select('id').limit(1);
+    return !error;
+  }catch(e){ return false; }
+}
+
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
 
 // Simpan tiket terakhir yang di-scan untuk tombol catat lanjutan
@@ -2828,21 +2915,12 @@ function catatPenumpangLanjutan(ticket){
   S.lanjutanLog.unshift(entry);
   saveState();
 
-  // Kirim ke Google Sheets jika terhubung
-  if(S.gs.connected){
-    gsPost({
-      action: 'addLanjutan',
-      ticket, waktu: now, tanggal,
-      kapal: S.ship.name || '',
-      voyage: S.ship.voyage || '',
-    }).then(()=>{
-      showToast('✅ Tercatat sebagai penumpang lanjutan · Tersimpan ke Sheets','success');
-    }).catch(()=>{
-      showToast('✅ Tercatat secara lokal · Gagal sync ke Sheets','warning');
-    });
-  } else {
-    showToast('✅ Tercatat sebagai penumpang lanjutan (lokal)','success');
-  }
+  // Simpan ke Supabase
+  sbAddLanjutan(ticket, now, tanggal).then(()=>{
+    showToast('✅ Tercatat sebagai penumpang lanjutan · Tersimpan ke database','success');
+  }).catch(()=>{
+    showToast('✅ Tercatat secara lokal · Gagal sync ke database','warning');
+  });
 
   // Update result box - ubah tombol jadi konfirmasi
   const btn = document.querySelector('[onclick^="catatPenumpangLanjutan"]');
@@ -3796,9 +3874,11 @@ async function syncManifes(){
         p.TUJUAN||p['Pel. Tujuan']||'',p.JEN_KELAMIN||p['Jen. Kelamin']||'',
         String(p.UMUR_TAHUN||p.USIA||''),String(p.UMUR_BULAN||''),p.NO_IDENTITAS||'',p._status||'pending']
     );
-    await gsPost({action:'uploadManifes',headers,rows});
-    showToast('✅ Manifes '+S.manifest.length+' penumpang diupload · ScanLog lama diarsip otomatis','success');
-    // Reset scanLog lokal saat manifes baru diupload
+    showToast('⏳ Mengupload manifes ke database...','warning');
+    const uploadOk = await sbUploadManifes(S.manifest, S.shipType);
+    if(!uploadOk) throw new Error('Gagal upload ke Supabase');
+    showToast('✅ Manifes '+S.manifest.length+' penumpang tersimpan ke database','success');
+    // Reset scanLog lokal
     S.scanLog=[];
     S.dupAlerts=[];
     S.manifest.forEach(p=>{ p._status='pending'; });
@@ -3828,20 +3908,14 @@ async function resetScanOnly(){
   renderTransitList();
   renderLog();
 
-  // Sync ke Google Sheets - arsip lalu kosongkan ScanLog
-  const gsUrl = GS_APPS_SCRIPT_URL || S.gs.url;
-  if(gsUrl){
-    showToast('⏳ Mengarsip ScanLog di Sheets...','warning');
-    try{
-      const res = await gsPost({ action: 'resetScanLog' });
-      const data = JSON.parse(await res.text());
-      if(data.ok){
-        showToast('✅ Log scan direset · ScanLog Sheets diarsip · Manifes tetap','success');
-      } else {
-        showToast('✅ Reset lokal OK · Gagal arsip Sheets: '+(data.msg||'error'),'warning');
-      }
-    }catch(err){
-      showToast('✅ Reset lokal OK · Gagal sync ke Sheets: '+err.message,'warning');
+  // Reset di Supabase - arsip lalu kosongkan scan_log
+  if(sb){
+    showToast('⏳ Mengarsip log di database...','warning');
+    const ok = await sbResetScanLog();
+    if(ok){
+      showToast('✅ Log scan direset · Database diarsip · Manifes tetap','success');
+    } else {
+      showToast('✅ Reset lokal OK · Gagal arsip database','warning');
     }
   } else {
     showToast('✅ Log scan direset · Manifes tetap tersimpan','success');
@@ -3930,17 +4004,16 @@ updateGSDot();
 updateTrStats();
 updateManifesStatusUI();
 
-// Jika URL sudah di-hardcode, inject ke state
-if(GS_APPS_SCRIPT_URL){
-  S.gs.url = GS_APPS_SCRIPT_URL;
+// Inisialisasi Supabase
+const sbOk = initSupabase();
+if(sbOk){
   S.gs.connected = true;
-  S.gs.autoSync = true;
+  S.gs.autoSync  = true;
   updateGSDot();
-  // Sembunyikan input URL di halaman GS
-  const infoBox = document.getElementById('gs-url-hardcoded-info');
-  const urlInput = document.getElementById('inp-gs-url');
-  if(infoBox) infoBox.style.display='block';
-  if(urlInput){ urlInput.value=GS_APPS_SCRIPT_URL; urlInput.style.display='none'; }
+  // Test koneksi async
+  sbTestConnection().then(ok=>{
+    if(!ok) console.warn('[SMART-Boarding] Supabase test connection gagal');
+  });
 }
 
 // Tampilkan login screen (selalu minta login saat buka app)
