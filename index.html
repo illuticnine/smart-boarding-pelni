@@ -911,394 +911,44 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 <!-- ═══════════════════ GOOGLE SHEETS PAGE ═══════════════════ -->
 <div class="page" id="page-gsheets">
 
-  <!-- Status Bar -->
+  <!-- Status Koneksi -->
   <div class="sync-bar disconnected" id="gs-status-bar">
     <div class="sync-dot" id="gs-dot"></div>
-    <span id="gs-status-text">Belum terhubung ke Google Sheets</span>
+    <span id="gs-status-text">Belum terhubung ke database</span>
   </div>
 
-  <!-- Connected panel -->
-  <div id="gs-connected-panel" style="display:none">
-    <div class="card" style="background:var(--green-lt);border:1.5px solid var(--green)">
-      <div class="card-title" style="color:var(--green)"><div class="cticon" style="background:#fff">✅</div>Terhubung ke Google Sheets</div>
-      <div style="font-size:12px;color:var(--green);margin-bottom:10px" id="gs-sheet-name-display">—</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <button class="btn btn-sm btn-success" onclick="syncNow()">🔄 Sync Sekarang</button>
-        <button class="btn btn-sm btn-gray" onclick="disconnectGS()">✖ Putus Koneksi</button>
-      </div>
-      <div style="font-size:11px;color:var(--green);margin-top:8px" id="gs-last-sync">Belum pernah sync</div>
+  <!-- Info Supabase -->
+  <div class="card" id="gs-connected-panel" style="display:none">
+    <div class="card-title" style="color:var(--green)">
+      <div class="cticon" style="background:#fff">✅</div>
+      Terhubung ke Supabase
     </div>
+    <div style="font-size:12px;color:var(--green);margin-bottom:10px" id="gs-sheet-name-display">—</div>
+    <button class="btn btn-sm btn-success" onclick="sbTestAndShow()">🔄 Test Koneksi</button>
   </div>
 
-  <!-- Setup Guide -->
-  <div class="card" id="gs-setup-panel">
-    <div class="card-title"><div class="cticon" style="background:#E8F5E9">☁️</div>Hubungkan ke Google Sheets</div>
-    <p style="font-size:12px;color:var(--gray-600);margin-bottom:14px;line-height:1.7">
-      Web app ini menggunakan <b>Google Apps Script</b> sebagai jembatan antara aplikasi dan Google Sheets Anda.
-      Ikuti langkah di bawah sekali saja — setelah itu data scan akan otomatis tersinkronisasi.
-    </p>
-
-    <div class="gs-step">
-      <div class="gs-num">1</div>
-      <div class="gs-info">
-        <div class="gs-title">Buka Google Sheets baru</div>
-        <div class="gs-desc">
-          Buka <a href="https://sheets.google.com" target="_blank" style="color:var(--blue)">sheets.google.com</a> → buat spreadsheet baru → beri nama misalnya <b>"SMART-Boarding Log"</b>.
-          Buat 3 sheet tab: <b>ScanLog</b>, <b>Manifes</b>, <b>TransitLog</b>.
-        </div>
-      </div>
-    </div>
-
-    <div class="gs-step">
-      <div class="gs-num">2</div>
-      <div class="gs-info">
-        <div class="gs-title">Buat Google Apps Script</div>
-        <div class="gs-desc">Di Google Sheets: klik menu <b>Extensions → Apps Script</b>. Hapus semua kode yang ada, paste kode berikut:</div>
-        <div class="code-block">// ── SMART-Boarding Apps Script ──
-// Tempel kode ini ke Extensions → Apps Script, lalu Deploy sebagai Web App
-// Execute as: Me | Who has access: Anyone
-
-const SS = SpreadsheetApp.getActiveSpreadsheet();
-
-// Fungsi pembantu: buat response dengan header CORS
-function makeResponse(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// doGet: tes koneksi & handle preflight OPTIONS
-function doGet(e) {
-  const action = e.parameter.action || '';
-
-  // Tes koneksi
-  if (!action || action === 'ping') {
-    return makeResponse({ ok: true, msg: 'SMART-Boarding API aktif', ts: new Date().toISOString() });
-  }
-
-  // Ambil data manifes (untuk load dari perangkat petugas)
-  if (action === 'getManifes') {
-    try {
-      const sh = SS.getSheetByName('Manifes');
-      if (!sh) {
-        return makeResponse({ ok: false, msg: 'Sheet Manifes tidak ditemukan — Admin belum upload manifes', rows: [] });
-      }
-      const lastRow = sh.getLastRow();
-      const lastCol = sh.getLastColumn();
-      if (lastRow < 2 || lastCol < 1) {
-        return makeResponse({ ok: false, msg: 'Sheet Manifes kosong ('+lastRow+' baris, '+lastCol+' kolom)', rows: [] });
-      }
-      const rows = sh.getDataRange().getValues();
-      // Validasi baris pertama adalah header (bukan data penumpang)
-      // Header biasanya tidak mengandung angka 15 digit (nomor tiket)
-      const firstRow = rows[0] ? rows[0].map(String) : [];
-      const looksLikeData = firstRow.some(cell => /^\d{15}$/.test(cell.trim()));
-      if (looksLikeData) {
-        return makeResponse({
-          ok: false,
-          msg: 'Sheet Manifes tidak memiliki baris header · Upload ulang manifes dari Admin',
-          rows: [],
-          debug: { firstRow: firstRow, issue: 'missing_header' }
-        });
-      }
-      return makeResponse({
-        ok: true,
-        rows: rows,
-        debug: {
-          totalRows: rows.length,
-          headers: firstRow,
-          sheet: 'Manifes'
-        }
-      });
-    } catch(err) {
-      return makeResponse({ ok: false, msg: 'Error getManifes: ' + err.message, rows: [] });
-    }
-  }
-
-  // Ambil scan log untuk dashboard Admin
-  if (action === 'getScanLog') {
-    try {
-      const sh = SS.getSheetByName('ScanLog');
-      if (!sh || sh.getLastRow() < 2) {
-        return makeResponse({ ok: true, rows: [], naik: 0, f1: 0, dup: 0, total: 0 });
-      }
-      const rows = sh.getDataRange().getValues();
-      const headers = rows[0].map(String);
-      const data = rows.slice(1).map(row => {
-        const o = {};
-        headers.forEach((h, i) => { o[h.trim()] = String(row[i]||'').trim(); });
-        return o;
-      });
-      const naik = data.filter(r => r['Status'] === 'NAIK').length;
-      const f1   = data.filter(r => r['Pos'] === 'F1' && r['Status'] === 'OK').length;
-      const dup  = data.filter(r => r['Status'] === 'DUPLIKAT').length;
-      return makeResponse({ ok: true, rows: data, naik, f1, dup, total: data.length });
-    } catch(err) {
-      return makeResponse({ ok: false, msg: 'Error: ' + err.message });
-    }
-  }
-
-  return makeResponse({ ok: false, msg: 'Action tidak dikenal' });
-}
-
-// doPost: terima data dari web app
-function doPost(e) {
-  try {
-    const data = JSON.parse(e.postData.contents);
-
-    if (data.action === 'addLog') {
-      const sh = getOrCreateSheet('ScanLog',
-        ['Waktu','No Tiket','Nama','Pos','Status','Info','Tipe Kapal','Nama Kapal','Voyage']);
-      sh.appendRow([
-        data.time, data.ticket, data.name, data.pos,
-        data.status, data.info || '', data.shipType || '',
-        data.shipName || '', data.voyage || ''
-      ]);
-    }
-
-    if (data.action === 'addTransit') {
-      const sh = getOrCreateSheet('TransitLog',
-        ['No Tiket','Nama','Waktu Keluar','Waktu Kembali','Durasi','Status','Timestamp']);
-      
-      if (data.status === 'kembali') {
-        // Cari baris keluar yang sudah ada, update status & waktu kembali
-        const vals = sh.getDataRange().getValues();
-        let updated = false;
-        for (let i = vals.length - 1; i >= 1; i--) {
-          if (String(vals[i][0]).trim() === String(data.ticket).trim() 
-              && vals[i][5] === 'keluar') {
-            let durasi = '';
-            try {
-              const [oh,om,os] = String(vals[i][2]).split(':').map(Number);
-              const [rh,rm,rs] = String(data.returnTime).split(':').map(Number);
-              const diffSec = (rh*3600+rm*60+rs) - (oh*3600+om*60+os);
-              if (diffSec >= 0) {
-                const m = Math.floor(diffSec/60);
-                const s = diffSec % 60;
-                durasi = m > 0 ? m+'m '+s+'d' : s+'d';
-              }
-            } catch(err) {}
-            sh.getRange(i+1, 4).setValue(data.returnTime || '');
-            sh.getRange(i+1, 5).setValue(durasi);
-            sh.getRange(i+1, 6).setValue('kembali');
-            sh.getRange(i+1, 7).setValue(new Date().toLocaleTimeString());
-            updated = true;
-            break;
-          }
-        }
-        if (!updated) {
-          sh.appendRow([data.ticket, data.name, data.outTime||'',
-            data.returnTime||'', '', 'kembali', new Date().toLocaleTimeString()]);
-        }
-      } else {
-        // Keluar: tambah baris baru
-        sh.appendRow([data.ticket, data.name, data.outTime||'',
-          '', '', 'keluar', new Date().toLocaleTimeString()]);
-      }
-    }
-    
-        if (data.action === 'addLanjutan') {
-      const sh = getOrCreateSheet('PenumpangLanjutan',
-        ['No Tiket','Waktu','Tanggal','Kapal','No Voyage','Timestamp']);
-      sh.appendRow([
-        data.ticket, data.waktu || '', data.tanggal || '',
-        data.kapal || '', data.voyage || '',
-        new Date().toLocaleTimeString()
-      ]);
-    }
-
-    if (data.action === 'uploadManifes') {
-
-      // ── ARSIP SCANLOG LAMA sebelum sesi baru dimulai ──
-      const scanSh = SS.getSheetByName('ScanLog');
-      if (scanSh && scanSh.getLastRow() > 1) {
-        try {
-          // Buat nama sheet arsip dengan timestamp
-          const now = new Date();
-          const stamp = Utilities.formatDate(now, 'Asia/Makassar', 'yyyyMMdd_HHmm');
-          const arsipName = 'ScanLog_' + stamp;
-
-          // Copy sheet ScanLog ke arsip
-          const arsipSh = scanSh.copyTo(SS);
-          arsipSh.setName(arsipName);
-
-          // Warnai tab arsip abu-abu agar mudah dibedakan
-          arsipSh.setTabColor('#9E9E9E');
-
-          // Kosongkan ScanLog aktif - hapus semua lalu tulis ulang header
-          scanSh.clearContents();
-          const scanHeaders = ['Waktu','No Tiket','Nama','Pos','Status','Info','Tipe Kapal','Nama Kapal','Voyage'];
-          scanSh.appendRow(scanHeaders);
-          scanSh.getRange(1, 1, 1, scanHeaders.length)
-            .setBackground('#0A2342')
-            .setFontColor('#FFFFFF')
-            .setFontWeight('bold');
-
-          // Catat arsip di sheet log internal (opsional)
-          Logger.log('ScanLog diarsip ke: ' + arsipName);
-        } catch(archErr) {
-          Logger.log('Gagal arsip ScanLog: ' + archErr.message);
-          // Lanjut upload manifes meski arsip gagal
-        }
-      }
-
-      // ── TULIS MANIFES BARU ──
-      const sh = getOrCreateSheet('Manifes', data.headers);
-
-      // Hapus SEMUA isi sheet (termasuk header lama)
-      sh.clearContents();
-
-      // Tulis header di baris 1
-      sh.appendRow(data.headers);
-      sh.getRange(1, 1, 1, data.headers.length)
-        .setBackground('#0A2342')
-        .setFontColor('#FFFFFF')
-        .setFontWeight('bold');
-
-      // Tulis data penumpang mulai baris 2
-      data.rows.forEach(r => sh.appendRow(r));
-    }
-
-    if (data.action === 'resetScanLog') {
-      // Arsip ScanLog aktif lalu kosongkan
-      const scanSh = SS.getSheetByName('ScanLog');
-      if (scanSh && scanSh.getLastRow() > 1) {
-        try {
-          const now = new Date();
-          const stamp = Utilities.formatDate(now, 'Asia/Makassar', 'yyyyMMdd_HHmm');
-          const arsipName = 'ScanLog_' + stamp;
-          const arsipSh = scanSh.copyTo(SS);
-          arsipSh.setName(arsipName);
-          arsipSh.setTabColor('#9E9E9E');
-          Logger.log('ScanLog diarsip ke: ' + arsipName);
-        } catch(archErr) {
-          Logger.log('Gagal arsip: ' + archErr.message);
-        }
-      }
-      // Kosongkan ScanLog aktif, tulis ulang header
-      if (scanSh) {
-        scanSh.clearContents();
-        const headers = ['Waktu','No Tiket','Nama','Pos','Status','Info','Tipe Kapal','Nama Kapal','Voyage'];
-        scanSh.appendRow(headers);
-        scanSh.getRange(1, 1, 1, headers.length)
-          .setBackground('#0A2342')
-          .setFontColor('#FFFFFF')
-          .setFontWeight('bold');
-      }
-      return makeResponse({ ok: true, msg: 'ScanLog berhasil diarsip dan dikosongkan' });
-    }
-
-    if (data.action === 'updateStatus') {
-      // Update status penumpang di sheet Manifes
-      const sh = SS.getSheetByName('Manifes');
-      if (sh) {
-        const vals = sh.getDataRange().getValues();
-        const headerRow = vals[0];
-        const ticketCol = headerRow.findIndex(h =>
-          String(h).toLowerCase().includes('tiket'));
-        const statusCol = headerRow.findIndex(h =>
-          String(h).toLowerCase() === 'status');
-        if (ticketCol >= 0 && statusCol >= 0) {
-          for (let i = 1; i < vals.length; i++) {
-            if (String(vals[i][ticketCol]).trim() === String(data.ticket).trim()) {
-              sh.getRange(i + 1, statusCol + 1).setValue(data.status);
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    return makeResponse({ ok: true });
-  } catch (err) {
-    return makeResponse({ ok: false, error: err.message });
-  }
-}
-
-// Buat sheet baru dengan header jika belum ada
-function getOrCreateSheet(name, headers) {
-  let sh = SS.getSheetByName(name);
-  if (!sh) {
-    // Sheet belum ada - buat baru
-    sh = SS.insertSheet(name);
-  }
-  // Selalu pastikan baris 1 berisi header yang benar
-  if (headers && headers.length > 0) {
-    const firstRow = sh.getLastRow() > 0 ? sh.getRange(1, 1, 1, headers.length).getValues()[0] : [];
-    const hasHeader = firstRow.some(cell => String(cell).trim() !== '');
-    if (!hasHeader) {
-      // Baris 1 kosong - tulis header
-      if (sh.getLastRow() === 0) {
-        sh.appendRow(headers);
-      } else {
-        sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-      }
-      sh.getRange(1, 1, 1, headers.length)
-        .setBackground('#0A2342')
-        .setFontColor('#FFFFFF')
-        .setFontWeight('bold');
-    }
-  }
-  return sh;
-}</div>
-      </div>
-    </div>
-
-    <div class="gs-step">
-      <div class="gs-num">3</div>
-      <div class="gs-info">
-        <div class="gs-title">Deploy sebagai Web App</div>
-        <div class="gs-desc">
-          Di Apps Script: klik <b>Deploy → New deployment</b> → pilih type <b>Web app</b>.<br>
-          ⚠️ <b>Wajib diatur persis seperti ini:</b><br>
-          • <b>Execute as</b> → <i>Me (email Anda)</i><br>
-          • <b>Who has access</b> → <i>Anyone</i> (bukan "Anyone with Google account")<br><br>
-          Klik <b>Deploy</b> → klik <b>Authorize access</b> → pilih akun Google Anda → klik <b>Allow</b>.<br>
-          Copy URL yang muncul (format: <code>https://script.google.com/macros/s/AKfy.../exec</code>)<br><br>
-          ⚠️ <b>Setiap ada perubahan kode</b>, Deploy ulang via <b>Deploy → Manage deployments → Edit (ikon pensil) → Version: New version → Deploy</b>.
-        </div>
-      </div>
-    </div>
-
-    <div class="gs-step">
-      <div class="gs-num">4</div>
-      <div class="gs-info">
-        <div class="gs-title">Paste URL di sini lalu hubungkan</div>
-        <div class="gs-desc">Salin URL Web App dari langkah 3 dan paste di bawah ini:</div>
-        <input type="text" class="gs-input" id="gs-url-input"
-               placeholder="https://script.google.com/macros/s/AKfy.../exec"/>
-        <div style="display:flex;gap:8px;margin-top:4px">
-          <input type="text" class="gs-input" id="gs-name-input"
-                 placeholder="Nama Google Sheet (opsional)" style="margin:0"/>
-        </div>
-        <button class="btn btn-primary" style="margin-top:10px" onclick="connectGS()">☁️ Hubungkan</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Sync options -->
+  <!-- Konfigurasi Supabase -->
   <div class="card">
-    <div class="card-title"><div class="cticon" style="background:#E3F0FF">⚙️</div>Pengaturan Sinkronisasi</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--gray-100)">
-      <div>
-        <div style="font-size:13px;font-weight:600">Auto-sync setiap scan</div>
-        <div style="font-size:11px;color:var(--gray-400)">Kirim data ke Sheets setiap ada scan baru</div>
-      </div>
-      <label style="position:relative;display:inline-block;width:42px;height:24px">
-        <input type="checkbox" id="auto-sync-toggle" style="opacity:0;width:0;height:0" onchange="saveSettings()">
-        <span id="toggle-span" style="position:absolute;cursor:pointer;top:0;right:0;bottom:0;left:0;background:var(--gray-200);border-radius:99px;transition:.3s"></span>
-      </label>
+    <div class="card-title">
+      <div class="cticon" style="background:#E8F5E9">🗄️</div>Konfigurasi Database Supabase
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0">
-      <div>
-        <div style="font-size:13px;font-weight:600">Upload manifes ke Sheets</div>
-        <div style="font-size:11px;color:var(--gray-400)">Sinkronkan data manifes yang sudah diupload</div>
-      </div>
-      <button class="btn btn-sm btn-primary" onclick="syncManifes()">Upload ↑</button>
+    <div style="background:#E3F2FD;border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px;color:#1565C0;line-height:1.7">
+      <b>Cara mendapatkan URL dan Key:</b><br>
+      1. Buka <b>supabase.com</b> → pilih project<br>
+      2. Klik <b>Settings</b> (⚙️) → <b>API</b><br>
+      3. Copy <b>Project URL</b> dan <b>anon public</b> key<br>
+      4. Paste di file <code>index.html</code> bagian atas
+    </div>
+    <div style="background:#FFF8E1;border-radius:8px;padding:10px;font-size:11px;color:#E65100;margin-bottom:14px">
+      ⚠️ URL dan Key dikonfigurasi langsung di file <code>index.html</code> sebelum deploy — bukan di sini.
+    </div>
+    <div class="slabel">Status Konfigurasi</div>
+    <div id="sb-config-status" style="font-size:12px;padding:10px;border-radius:8px;background:var(--gray-50)">
+      Memeriksa...
     </div>
   </div>
 
-  <!-- Reset Data Card -->
+  <!-- Reset Data -->
   <div class="card">
     <div class="card-title">
       <div class="cticon" style="background:#FCE4EC">🗑</div>Reset Data Aplikasi
@@ -1322,40 +972,30 @@ function getOrCreateSheet(name, headers) {
     </div>
   </div>
 
-  <!-- Troubleshooting -->
+  <!-- Info Tabel Supabase -->
   <div class="card">
-    <div class="card-title"><div class="cticon" style="background:#FFEBEE">🔧</div>Troubleshooting Koneksi</div>
+    <div class="card-title">
+      <div class="cticon" style="background:#E8EAF6">📋</div>Struktur Database
+    </div>
     <div style="font-size:12px;color:var(--gray-600);line-height:1.9">
-      <div style="margin-bottom:10px;padding:10px;background:var(--red-lt);border-radius:var(--rs);border-left:3px solid var(--red)">
-        <b style="color:var(--red)">❌ "Failed to fetch" atau error koneksi?</b><br>
-        Penyebab paling umum adalah pengaturan deploy yang salah di Apps Script.
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px">
+        <span style="font-weight:700;color:#1565C0">manifes</span>
+        <span>Data penumpang per sesi kapal</span>
+        <span style="font-weight:700;color:#1565C0">scan_log</span>
+        <span>Riwayat scan F1 & F2</span>
+        <span style="font-weight:700;color:#1565C0">sesi_kapal</span>
+        <span>Arsip per sesi keberangkatan</span>
+        <span style="font-weight:700;color:#1565C0">penumpang_lanjutan</span>
+        <span>Log penumpang transit lanjutan</span>
       </div>
-
-
-      <b>Checklist wajib:</b>
-      <div style="margin:8px 0 0 4px">
-        ☐ &nbsp;<b>Who has access</b> diset ke <i>Anyone</i> (bukan "Anyone with Google account")<br>
-        ☐ &nbsp;Sudah klik <b>Authorize access</b> dan klik <b>Allow</b> saat pertama deploy<br>
-        ☐ &nbsp;URL yang dipakai adalah URL dari hasil Deploy, bukan URL editor Apps Script<br>
-        ☐ &nbsp;Setelah ubah kode, sudah deploy ulang dengan <b>New version</b><br>
-        ☐ &nbsp;Koneksi internet HP/laptop aktif
-      </div>
-
-      <div class="divider"></div>
-      <b>Cara tes manual URL Apps Script:</b><br>
-      Buka URL Apps Script di browser baru. Jika muncul teks JSON seperti:<br>
-      <code style="background:var(--gray-100);padding:3px 7px;border-radius:4px;font-size:11px">{"ok":true,"msg":"SMART-Boarding API aktif"}</code><br>
-      berarti Apps Script sudah berjalan benar dan URL bisa dipakai.
-
-      <div class="divider"></div>
-      <b>Kenapa pakai content-type text/plain?</b><br>
-      Google Apps Script tidak mendukung CORS preflight (OPTIONS request) yang dikirim browser saat content-type = <code>application/json</code>. Solusinya adalah mengirim data dengan header <code>text/plain</code> — Apps Script tetap bisa membaca isi JSON-nya, dan browser tidak mengirim preflight request.
+    </div>
+    <div style="margin-top:12px;padding:10px;background:#F3F4F6;border-radius:8px;
+                font-size:11px;color:var(--gray-500)">
+      💡 Jalankan file <b>supabase_schema.sql</b> di SQL Editor Supabase untuk membuat tabel-tabel ini.
     </div>
   </div>
 
 </div>
-</div><!-- end main -->
-
 <!-- MODAL: SHIP -->
 <div class="modal-bg" id="modal-ship">
   <div class="modal">
@@ -1392,8 +1032,8 @@ function getOrCreateSheet(name, headers) {
 // ║  LANGKAH 2: Ganti PIN sesuai kebutuhan                              ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-const SUPABASE_URL  = 'https://knmkbqjpcjuhozljdmka.supabase.co';  // ← PASTE Project URL  (https://xxx.supabase.co)
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubWticWpwY2p1aG96bGpkbWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MjU0NDYsImV4cCI6MjA5NzAwMTQ0Nn0.QJ4Ku7iVPCKuaLzPCLqtznwbRxD6bX8PuCG7sSBmQCo';  // ← PASTE anon public key
+const SUPABASE_URL  = '';  // ← PASTE Project URL  (https://xxx.supabase.co)
+const SUPABASE_ANON = '';  // ← PASTE anon public key
 const APP_VERSION   = 'v2.0';
 
 // Legacy — tidak dipakai lagi (Supabase menggantikan Google Sheets)
@@ -1567,7 +1207,7 @@ function showPage(id){
       if(trScanMode==='hardware') focusTrHw();
     },300);
   }
-  if(id==='gsheets') renderGSPage();
+  if(id==='gsheets'){ updateGSDot(); updateSbConfigStatus(); }
 }
 
 // ══════════════════════════════════════════
@@ -2889,6 +2529,40 @@ async function sbTestConnection(){
   }catch(e){ return false; }
 }
 
+
+// ── Status UI Supabase ────────────────────────────────────────
+async function sbTestAndShow(){
+  const el = document.getElementById('sb-config-status');
+  if(!sb){
+    if(el) el.innerHTML = '<span style="color:var(--red)">❌ Supabase belum dikonfigurasi di file index.html</span>';
+    return;
+  }
+  if(el) el.innerHTML = '⏳ Menguji koneksi...';
+  const ok = await sbTestConnection();
+  if(el){
+    el.innerHTML = ok
+      ? '<span style="color:var(--green)">✅ Terhubung ke Supabase · Database siap digunakan</span>'
+      : '<span style="color:var(--red)">❌ Gagal terhubung · Periksa URL dan Key di index.html</span>';
+  }
+  updateGSDot();
+}
+
+function updateSbConfigStatus(){
+  const el = document.getElementById('sb-config-status');
+  if(!el) return;
+  if(!SUPABASE_URL || !SUPABASE_ANON){
+    el.innerHTML = '<span style="color:var(--red)">❌ SUPABASE_URL dan SUPABASE_ANON belum diisi di index.html</span>';
+  } else if(!sb){
+    el.innerHTML = '<span style="color:var(--amber)">⚠️ URL dan Key sudah diisi tapi koneksi gagal dibuat</span>';
+  } else {
+    el.innerHTML = '<span style="color:var(--green)">✅ Dikonfigurasi · ' + SUPABASE_URL + '</span>';
+    const panel = document.getElementById('gs-connected-panel');
+    if(panel) panel.style.display = 'block';
+    const nameEl = document.getElementById('gs-sheet-name-display');
+    if(nameEl) nameEl.textContent = SUPABASE_URL;
+  }
+}
+
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
 
 // Simpan tiket terakhir yang di-scan untuk tombol catat lanjutan
@@ -3780,8 +3454,10 @@ function updateGSDot(){
 // Solusi: kirim sebagai text/plain tapi isi body tetap JSON string.
 // Apps Script membaca e.postData.contents seperti biasa.
 
+// LEGACY — tidak dipakai lagi (diganti Supabase)
 async function gsPost(data){
-  if(!S.gs.connected||!S.gs.url) throw new Error('Tidak terhubung');
+  console.warn('[LEGACY gsPost] Tidak digunakan lagi, pakai Supabase');
+  throw new Error('gsPost tidak digunakan lagi — pakai Supabase');
   const res = await fetch(S.gs.url, {
     method: 'POST',
     // Kunci: text/plain menghindari CORS preflight OPTIONS
