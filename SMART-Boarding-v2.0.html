@@ -900,13 +900,24 @@ function doGet(e) {
         return makeResponse({ ok: false, msg: 'Sheet Manifes kosong ('+lastRow+' baris, '+lastCol+' kolom)', rows: [] });
       }
       const rows = sh.getDataRange().getValues();
-      // Kirim info tambahan untuk debug
+      // Validasi baris pertama adalah header (bukan data penumpang)
+      // Header biasanya tidak mengandung angka 15 digit (nomor tiket)
+      const firstRow = rows[0] ? rows[0].map(String) : [];
+      const looksLikeData = firstRow.some(cell => /^\d{15}$/.test(cell.trim()));
+      if (looksLikeData) {
+        return makeResponse({
+          ok: false,
+          msg: 'Sheet Manifes tidak memiliki baris header · Upload ulang manifes dari Admin',
+          rows: [],
+          debug: { firstRow: firstRow, issue: 'missing_header' }
+        });
+      }
       return makeResponse({
         ok: true,
         rows: rows,
         debug: {
           totalRows: rows.length,
-          headers: rows[0] ? rows[0].map(String) : [],
+          headers: firstRow,
           sheet: 'Manifes'
         }
       });
@@ -986,9 +997,18 @@ function doPost(e) {
 
     if (data.action === 'uploadManifes') {
       const sh = getOrCreateSheet('Manifes', data.headers);
-      // Hapus data lama (baris 2 ke bawah), jaga header
-      const last = sh.getLastRow();
-      if (last > 1) sh.deleteRows(2, last - 1);
+
+      // Hapus SEMUA isi sheet (termasuk header lama jika ada)
+      sh.clearContents();
+
+      // Tulis header di baris 1 — selalu, tanpa pengecualian
+      sh.appendRow(data.headers);
+      sh.getRange(1, 1, 1, data.headers.length)
+        .setBackground('#0A2342')
+        .setFontColor('#FFFFFF')
+        .setFontWeight('bold');
+
+      // Tulis data penumpang mulai baris 2
       data.rows.forEach(r => sh.appendRow(r));
     }
 
