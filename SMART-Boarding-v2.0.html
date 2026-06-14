@@ -1416,7 +1416,7 @@ function setShipType(t){
   document.getElementById('tbl-perintis-wrap').style.display = t==='perintis'?'block':'none';
   document.getElementById('tbl-penumpang-wrap').style.display = t==='penumpang'?'block':'none';
   document.getElementById('dash-kategori').style.display = t==='perintis'?'block':'none';
-  document.getElementById('dash-type').textContent = t==='perintis'?'Perintis':'Penumpang';
+  const dt=document.getElementById('dash-type'); if(dt) dt.textContent = t==='perintis'?'Perintis':'Penumpang';
   // Update file input: penumpang mendukung PDF juga
   const fi = document.getElementById('file-input');
   if(t==='penumpang'){
@@ -2895,10 +2895,11 @@ function parseCSV(text){
 function updateManifestSummary(){
   const total=S.manifest.length;
   const boarded=S.manifest.filter(p=>p._status==='naik').length;
-  document.getElementById('m-total').textContent=total;
-  document.getElementById('m-boarded').textContent=boarded;
-  document.getElementById('m-pending').textContent=total-boarded;
-  document.getElementById('manifest-summary').style.display=total>0?'block':'none';
+  const se=(id,val,prop='textContent')=>{ const el=document.getElementById(id); if(el) el[prop]=val; };
+  se('m-total',   total);
+  se('m-boarded', boarded);
+  se('m-pending', total-boarded);
+  se('manifest-summary', total>0?'block':'none', 'style.display');
 }
 
 function renderManifestTable(){
@@ -3010,32 +3011,41 @@ function updateDashCounters(){
   const f1=S.scanLog.filter(l=>l.pos==='F1'&&l.status==='OK').length;
   const f2=S.scanLog.filter(l=>l.pos==='F2'&&l.status==='NAIK').length;
   const pct=total>0?Math.round(naik/total*100):0;
-  const el=id=>document.getElementById(id);
-  if(el('d-total')) el('d-total').textContent=total;
-  document.getElementById('d-naik').textContent=naik;
-  if(el('d-dup'))  el('d-dup').textContent=S.dupAlerts.length;
-  if(el('d-f1'))   el('d-f1').textContent=f1;
-  document.getElementById('d-transit').textContent=S.transitLog.filter(t=>!t.returned).length;
-  document.getElementById('prog-bar').style.width=pct+'%';
-  document.getElementById('prog-pct').textContent=pct+'%';
-  document.getElementById('d-f1').textContent='Filter 1: '+f1+' scan valid';
-  document.getElementById('d-f2').textContent='Filter 2: '+f2+' scan valid';
+  // Helper aman — tidak crash meski elemen tidak ada (petugas tidak punya dashboard)
+  const se=(id,val,prop='textContent')=>{
+    const el=document.getElementById(id);
+    if(el) el[prop]=val;
+  };
+  se('d-total', total);
+  se('d-naik',  naik);
+  se('d-dup',   S.dupAlerts.length);
+  se('d-f1',    f1);
+  se('d-f2',    f2);
+  se('d-transit', S.transitLog.filter(t=>!t.returned).length);
+  const pb=document.getElementById('prog-bar'); if(pb) pb.style.width=pct+'%';
+  se('prog-pct',  pct+'%');
   // Perintis breakdown
-  const normK = p => (p.Kategori||p['Kategori']||p.KATEGORI||'').toString().toUpperCase().trim();
-  const dws=S.manifest.filter(p=>{ const k=normK(p); return k==='DWS'||k==='DEWASA'||k==='D'; }).length;
-  const anak=S.manifest.filter(p=>{ const k=normK(p); return k==='ANAK'||k==='ANK'||k==='A'; }).length;
-  const bayi=S.manifest.filter(p=>{ const k=normK(p); return k==='BAYI'||k==='BY'||k==='B'; }).length;
-  document.getElementById('d-dws').textContent=dws;
-  document.getElementById('d-anak').textContent=anak;
-  document.getElementById('d-bayi').textContent=bayi;
+  const normK = p=>(p.Kategori||p['Kategori']||p.KATEGORI||'').toString().toUpperCase().trim();
+  const dws =S.manifest.filter(p=>{const k=normK(p);return k==='DWS'||k==='DEWASA'||k==='D';}).length;
+  const anak=S.manifest.filter(p=>{const k=normK(p);return k==='ANAK'||k==='ANK'||k==='A';}).length;
+  const bayi=S.manifest.filter(p=>{const k=normK(p);return k==='BAYI'||k==='BY'||k==='B';}).length;
+  se('d-dws',  dws);
+  se('d-anak', anak);
+  se('d-bayi', bayi);
+  // Info kapal
+  se('dash-ship',  S.ship.name||'Belum Diatur');
+  se('dash-route', S.ship.route||'—');
+  se('dash-time',  S.ship.time||'—');
+  se('dash-type',  S.shipType==='perintis'?'Kapal Perintis':'Kapal Penumpang');
 }
 
 function updateDashboard(){
   updateDashCounters();
-  document.getElementById('dash-ship').textContent=S.ship.name||'Belum Diatur';
-  document.getElementById('dash-route').textContent=S.ship.route||(S.ship.voyage?'Voyage: '+S.ship.voyage:'—');
-  document.getElementById('dash-time').textContent=S.ship.time||'—';
-  document.getElementById('dash-type').textContent=S.shipType==='perintis'?'Perintis':'Penumpang';
+  const se2=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+  se2('dash-ship',  S.ship.name||'Belum Diatur');
+  se2('dash-route', S.ship.route||(S.ship.voyage?'Voyage: '+S.ship.voyage:'—'));
+  se2('dash-time',  S.ship.time||'—');
+  se2('dash-type',  S.shipType==='perintis'?'Perintis':'Penumpang');
   // Alert list
   const al=document.getElementById('alert-list');
   if(!S.dupAlerts.length){
