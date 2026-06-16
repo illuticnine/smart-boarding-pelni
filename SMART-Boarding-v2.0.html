@@ -1187,7 +1187,11 @@ function showPage(id){
     // Hentikan auto-refresh jika pindah halaman lain
     stopDashAutoRefresh();
   }
-  if(id==='log') renderLog();
+  if(id==='log'){
+    // Tampil lokal dulu, lalu sync dari Supabase
+    renderLog();
+    loadLogFromSupabase();
+  }
   if(id==='manifest'){
     setTimeout(()=>{
       renderManifestTable();
@@ -2512,6 +2516,71 @@ async function syncStatusFromSupabase(silent = true){
   }
 }
 
+
+// ══════════════════════════════════════
+// LOG — LOAD DARI SUPABASE
+// ══════════════════════════════════════
+let _sbLogCache = [];  // cache log dari Supabase
+
+async function loadLogFromSupabase(){
+  if(!sb) return;
+  try{
+    const { data, error } = await sb.from('scan_log')
+      .select('*')
+      .eq('sesi_id', getSesiId())
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if(error || !data) return;
+
+    // Konversi ke format S.scanLog
+    _sbLogCache = data.map(r => ({
+      time    : r.waktu || '',
+      ticket  : r.no_tiket || '',
+      name    : r.nama || '',
+      pos     : r.pos || '',
+      status  : r.status || '',
+      info    : r.info || '',
+      shipType: r.tipe_kapal || '',
+    }));
+
+    // Render log dari cache Supabase
+    renderLogFromCache();
+  }catch(e){
+    console.warn('[SB] loadLog error:', e.message);
+    // Fallback ke lokal jika gagal
+    renderLog();
+  }
+}
+
+function renderLogFromCache(){
+  const source = _sbLogCache.length ? _sbLogCache : S.scanLog;
+  const filter = S.logFilter;
+  const filtered = filter === 'all' ? source : source.filter(l => l.status === filter);
+
+  const tbody = document.getElementById('log-tbody');
+  const empty = document.getElementById('log-empty');
+  if(!filtered.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+
+  tbody.innerHTML = filtered.map(l => {
+    let badge = '';
+    if(l.status==='OK')        badge='<span class="badge bg">✅ F1 Lolos</span>';
+    else if(l.status==='NAIK') badge='<span class="badge bt">🚢 Naik Kapal</span>';
+    else if(l.status==='DUPLIKAT') badge='<span class="badge br">🚨 Duplikat</span>';
+    else if(l.status==='TRANSIT')  badge='<span class="badge ba">🔄 Transit</span>';
+    else if(l.status==='PERHATIAN') badge='<span class="badge ba">⚠️ Perhatian</span>';
+    else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
+    const pc = `<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
+    return `<tr>
+      <td style="font-size:11px;color:var(--gray-400);white-space:nowrap">${l.time}</td>
+      <td style="font-family:monospace;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.ticket}</td>
+      <td style="font-weight:600;font-size:12px">${l.name}</td>
+      <td>${pc}</td><td>${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
 
 // Simpan tiket terakhir yang di-scan untuk tombol catat lanjutan
@@ -3328,7 +3397,9 @@ function filterLog(f,el){
   S.logFilter=f;
   document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
-  renderLog();
+  // Render dari cache Supabase jika ada, fallback ke lokal
+  if(_sbLogCache.length) renderLogFromCache();
+  else renderLog();
 }
 
 function renderLog(){
@@ -3362,9 +3433,11 @@ function clearLog(){
 }
 
 function exportLog(){
-  if(!S.scanLog.length){showToast('Belum ada data','warning');return;}
+  // Prioritaskan data dari Supabase, fallback ke lokal
+  const source = _sbLogCache.length ? _sbLogCache : S.scanLog;
+  if(!source.length){showToast('Belum ada data','warning');return;}
   const h=['Waktu','No Tiket','Nama','Pos','Status','Info','Tipe Kapal'];
-  const rows=S.scanLog.map(l=>[l.time,l.ticket,l.name,l.pos,l.status,l.info||'',l.shipType||'']);
+  const rows=source.map(l=>[l.time,l.ticket,l.name,l.pos,l.status,l.info||'',l.shipType||'']);
   const csv=[h,...rows].map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
