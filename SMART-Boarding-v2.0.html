@@ -3654,6 +3654,15 @@ function renderManifestTable(){
     return !q||name.includes(q)||ticket.includes(q);
   });
 
+  // Kosongkan tabel yang tidak aktif agar tidak tampil data lama
+  if(S.shipType==='perintis'){
+    const tbodyP = document.getElementById('tbody-penumpang');
+    if(tbodyP) tbodyP.innerHTML = '';
+  } else {
+    const tbodyPer = document.getElementById('tbody-perintis');
+    if(tbodyPer) tbodyPer.innerHTML = '';
+  }
+
   if(S.shipType==='perintis'){
     const tbody=document.getElementById('tbody-perintis');
     if(!filtered.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray-400);padding:20px">Tidak ada data</td></tr>'; return; }
