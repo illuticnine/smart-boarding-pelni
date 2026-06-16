@@ -281,7 +281,6 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   .infog-pct{display:flex;justify-content:space-between;margin-top:5px;
     font-size:10px;color:rgba(255,255,255,.5)}
 
-
   /* ── CHECKLIST SESI BARU ── */
   #checklist-sesi{
     margin-bottom:14px;
@@ -334,7 +333,6 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     color:#fff;text-align:center;margin-bottom:14px;
     font-weight:700;font-size:14px;
   }
-
 
   /* ── ACCORDION iOS-STYLE ──────────────────────────── */
   .acc-wrap {
@@ -502,7 +500,6 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     </div>
   </div>
 </div>
-
 
 <!-- HEADER -->
 <header class="hdr">
@@ -1025,7 +1022,6 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     </div>
   </div>
 
-
 </div>
 <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
 <div class="page" id="page-dashboard">
@@ -1211,8 +1207,6 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   </div>
 
 </div>
-
-
 
 <!-- ═══════════════════ TRANSIT PAGE ═══════════════════ -->
 <div class="page" id="page-transit">
@@ -1434,7 +1428,6 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       💡 Jalankan file <b>supabase_schema.sql</b> di SQL Editor Supabase untuk membuat tabel-tabel ini.
     </div>
   </div>
-
 
 <!-- MODAL: SHIP -->
 <div class="modal-bg" id="modal-ship">
@@ -1699,12 +1692,7 @@ function showPage(id){
       updateManifesPage();
       updateManifesStatusUI();
       updateManifesKapalTabs();
-      // Buka accordion tabel jika ada manifes
-      if(S.manifest && S.manifest.length > 0){
-        const accT = document.getElementById('acc-tabel');
-        if(accT){ accT.style.display='block'; openAcc('acc-tabel'); }
-      }
-      renderManifestTable();
+      updateAccordionState();  // ini akan buka acc-tabel jika ada manifes
       refreshLoadSheetsBtn();
       syncStatusFromSupabase(true);
     }, 50);
@@ -2303,7 +2291,6 @@ function refreshLoadSheetsBtn(){
   }
 }
 
-
 // ══════════════════════════════════════
 // SISTEM LOGIN & ROLE
 // ══════════════════════════════════════
@@ -2512,7 +2499,6 @@ function logout(){
   if(posGrid) posGrid.style.display='';
 }
 
-
 // ── Fetch manifes terpusat ──────────────────────────
 async function fetchManifesFromGS(){
   // Sekarang menggunakan Supabase — nama fungsi dipertahankan untuk kompatibilitas
@@ -2524,7 +2510,6 @@ async function fetchManifesFromGS(){
   const namaKapal = S.ship.name || (manifest[0] && manifest[0]['Nama Kapal']) || '';
   return { manifest, tipeKapal, namaKapal };
 }
-
 
 async function applyUrlFromDialog(){
   const inp = document.getElementById('dialog-gs-url');
@@ -2553,7 +2538,6 @@ async function applyUrlFromDialog(){
     showUrlInputDialog(); // Buka lagi kalau gagal
   }
 }
-
 
 // ══════════════════════════════════════
 // DASHBOARD REFRESH DARI SHEETS (untuk Admin)
@@ -2603,7 +2587,6 @@ async function refreshDashboardFromSheets(){
     if(btn){ btn.disabled=false; btn.textContent='🔄 Refresh'; }
   }
 }
-
 
 // ══════════════════════════════════════
 // AUTO-REFRESH DASHBOARD (Admin only)
@@ -2663,7 +2646,6 @@ function updateCountdownTick(){
   _countdownSec = 30;
   updateCountdownUI();
 }
-
 
 // ══════════════════════════════════════
 // AUTO-REFRESH STATUS UNTUK PETUGAS
@@ -2749,7 +2731,6 @@ function updateInfografis(){
   se('infog-prog-label', naik+' dari '+total+' penumpang naik');
   se('infog-prog-pct',   pct+'%');
 }
-
 
 // ══════════════════════════════════════════════════════════════
 // SUPABASE — FUNGSI DATABASE
@@ -2864,7 +2845,6 @@ async function sbUploadManifes(manifest, tipeKapal){
     return false;
   }
 }
-
 
 async function sbGetManifes(){
   if(!sb) throw new Error('Supabase belum dikonfigurasi');
@@ -3006,7 +2986,6 @@ async function sbTestConnection(){
   }catch(e){ return false; }
 }
 
-
 // ── Status UI Supabase ────────────────────────────────────────
 async function sbTestAndShow(){
   const el = document.getElementById('sb-config-status');
@@ -3040,13 +3019,11 @@ function updateSbConfigStatus(){
   }
 }
 
-
 // ══════════════════════════════════════
 // APPLY MANIFES TO STATE
 // Terapkan hasil fetch ke state dan UI
 // ══════════════════════════════════════
 function applyManifesToState({ manifest, tipeKapal, namaKapal }){
-  console.log('[SMART] applyManifesToState: manifest='+manifest.length+', tipe='+tipeKapal+', kapal='+namaKapal);
   S.manifest  = manifest;
   S.shipType  = tipeKapal;
   if(namaKapal){
@@ -3058,11 +3035,8 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
   S.manifestPage = 1;
   updateManifestSummary();
   setTimeout(()=>{
-    console.log('[SMART] setTimeout render: manifest='+S.manifest.length+', shipType='+S.shipType);
     const tbody = document.getElementById('tbody-'+S.shipType);
-    console.log('[SMART] tbody element:', tbody ? 'ADA' : 'TIDAK ADA (tbody-'+S.shipType+')');
     const accT  = document.getElementById('acc-tabel');
-    console.log('[SMART] acc-tabel:', accT ? 'ADA, open='+accT.classList.contains('acc-open') : 'TIDAK ADA');
     renderManifestTable();
     updateManifesStatusUI();
     updateInfografis();
@@ -3086,7 +3060,6 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
   updateAccordionState();
   updateChecklist();
 }
-
 
 // ══════════════════════════════════════
 // SYNC STATUS DARI SUPABASE
@@ -3141,7 +3114,6 @@ async function syncStatusFromSupabase(silent = true){
     return false;
   }
 }
-
 
 // ══════════════════════════════════════
 // LOG — LOAD DARI SUPABASE
@@ -3206,7 +3178,6 @@ function renderLogFromCache(){
     </tr>`;
   }).join('');
 }
-
 
 // ══════════════════════════════════════
 // CHECKLIST SESI BARU
@@ -3287,7 +3258,6 @@ function updateChecklist(){
       : '⏳';
   }
 }
-
 
 // ══════════════════════════════════════════════════════════════
 // SUPABASE — FUNGSI MULTI-SESI
@@ -3399,7 +3369,6 @@ async function refreshKapalAktif(){
   updateManifesKapalTabs();
   return list;
 }
-
 
 // ══════════════════════════════════════════════════════════════
 // MULTI-SESI — UI FUNCTIONS
@@ -3533,6 +3502,14 @@ async function _lanjutSesiOtomatis(sesiList){
   renderDashboardMultiKapal();
   updateManifesPage();
   updateAccordionState();
+  // Buka accordion tabel otomatis jika ada manifes
+  if(S.manifest.length > 0){
+    setTimeout(()=>{
+      const accT = document.getElementById('acc-tabel');
+      if(accT){ accT.style.display='block'; openAcc('acc-tabel'); }
+      renderManifestTable();
+    }, 200);
+  }
   updateChecklist();
   updateShipLabel();
   showToast('✅ Sesi dilanjutkan · '+k.nama_kapal+' · '+
@@ -3697,7 +3674,6 @@ async function pilihKapalF2(sesiId, namaKapal, tipeKapal){
   await autoInitPetugas();
 }
 
-
 // ── Update ship-label di header ─────────────────────────────
 function updateShipLabel(){
   const lbl = document.getElementById('ship-label');
@@ -3713,7 +3689,6 @@ function updateShipLabel(){
     lbl.textContent = 'Tambah Kapal';
   }
 }
-
 
 // ══════════════════════════════════════
 // PAGINASI TABEL MANIFES
@@ -3762,7 +3737,6 @@ function updatePaginasi(filtered){
   if(prev) prev.disabled = page <= 1;
   if(next) next.disabled = page >= maxPage;
 }
-
 
 // ══════════════════════════════════════
 // MANIFES PAGE — FUNGSI BARU
@@ -3950,7 +3924,6 @@ async function saveShipDariManifes2(){
   showToast(`✅ ${nama} ditambahkan`,'success');
 }
 
-
 // Tab pilih kapal di tabel manifes
 function updateManifesKapalTabs(){
   const tabsEl = document.getElementById('manifes-kapal-tabs');
@@ -3987,18 +3960,17 @@ async function pilihKapalManifes(sesiId){
 
   try{
     const manifes = await sbGetManifes();
-    S.manifest = manifes;
-    S.manifestPage = 1;
-    saveState();
-    updateManifestSummary();
-    renderManifestTable();
+    applyManifesToState({
+      manifest  : manifes,
+      tipeKapal : kapal.tipe_kapal || 'perintis',
+      namaKapal : kapal.nama_kapal,
+    });
     updateManifesKapalTabs();
     showToast('✅ Manifes '+kapal.nama_kapal+' dimuat · '+manifes.length+' penumpang','success');
   }catch(e){
     showToast('❌ Gagal muat manifes: '+e.message,'error');
   }
 }
-
 
 // ══════════════════════════════════════
 // ACCORDION
@@ -4066,16 +4038,23 @@ function updateAccordionState(){
   }
 
   // Acc 3: Daftar Penumpang
+  const accTabel3 = document.getElementById('acc-tabel');
   const sub3 = document.getElementById('acc-tabel-sub');
   if(hasManifes){
     const naik = S.manifest.filter(p=>p._status==='naik').length;
     if(sub3) sub3.textContent = S.manifest.length+' penumpang · '+naik+' naik';
-    openAcc('acc-tabel');
-    // Tampilkan perbarui button
+    // Pastikan accordion tabel selalu tampil dan terbuka jika ada manifes
+    if(accTabel3){
+      accTabel3.style.display = 'block';
+      openAcc('acc-tabel');
+    }
     const inlineBtn = document.getElementById('manifes-status-card-inline');
     if(inlineBtn) inlineBtn.style.display = 'block';
+    // Render tabel
+    setTimeout(()=>{ renderManifestTable(); }, 50);
   } else {
     if(sub3) sub3.textContent = 'Belum ada manifes';
+    if(accTabel3) closeAcc('acc-tabel');
     const inlineBtn = document.getElementById('manifes-status-card-inline');
     if(inlineBtn) inlineBtn.style.display = 'none';
   }
@@ -4468,7 +4447,6 @@ function updateManifestSummary(){
 }
 
 function renderManifestTable(){
-  console.log('[SMART] renderManifestTable: total='+S.manifest.length+', shipType='+S.shipType);
   updateManifestSummary();
   const q=(document.getElementById('search-manifest')?.value||'').toLowerCase();
   const filtered=S.manifest.filter(p=>{
@@ -4633,7 +4611,6 @@ function updateDashCounters(){
   const katEl = document.getElementById('dash-kategori');
   if(katEl) katEl.style.display = S.shipType==='perintis' ? 'block' : 'none';
 }
-
 
 function updateDashboard(){
   updateDashCounters();
@@ -5283,7 +5260,6 @@ async function resetAllData(){
   document.getElementById('manifest-summary').style.display='none';
   showToast('✅ Semua data direset — lokal & database bersih','success');
 }
-
 
 // Alias untuk kompatibilitas
 function resetAppData(){ resetAllData(); }
