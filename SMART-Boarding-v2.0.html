@@ -1807,16 +1807,30 @@ function setManifesLoadTime(){
 function updateManifesStatusUI(){
   const statusCard  = document.getElementById('manifes-status-card');
   const emptyBox    = document.getElementById('manifes-empty-box');
+  const uploadZone  = document.getElementById('upload-zone');
+  const labelUpload = document.getElementById('label-upload-file');
   const detailEl    = document.getElementById('manifes-status-detail');
   const loadedTime  = document.getElementById('manifes-loaded-time');
   const btnSummary  = document.getElementById('btn-summary-perbarui');
 
   const hasManifes = S.manifest && S.manifest.length > 0;
+  const isAdmin    = currentRole === 'admin';
 
-  // Toggle empty vs status card
+  // Status card: tampil jika ada manifes
   if(statusCard) statusCard.style.display = hasManifes ? 'block' : 'none';
-  if(emptyBox)   emptyBox.style.display   = hasManifes ? 'none'  : 'block';
-  if(btnSummary) btnSummary.style.display = hasManifes ? ''      : 'none';
+  if(btnSummary) btnSummary.style.display = hasManifes ? '' : 'none';
+
+  // Untuk Admin: upload-zone selalu tampil, emptyBox tidak perlu
+  if(isAdmin){
+    if(emptyBox)    emptyBox.style.display   = 'none';
+    if(uploadZone)  uploadZone.style.display  = '';
+    if(labelUpload) labelUpload.style.display = '';
+  } else {
+    // Untuk Petugas: emptyBox tampil jika belum ada manifes
+    if(emptyBox)    emptyBox.style.display   = hasManifes ? 'none' : 'block';
+    if(uploadZone)  uploadZone.style.display  = 'none';
+    if(labelUpload) labelUpload.style.display = 'none';
+  }
 
   if(!hasManifes) return;
 
@@ -2052,13 +2066,11 @@ function applyRole(role){
 
   // Elemen HANYA untuk Admin
   const adminOnlyIds = [
-    'upload-zone',        // zona drag & drop upload
-    'file-input',         // input file
-    'label-upload-file',  // label "Upload File Manifes"
-    'divider-upload',     // divider "atau upload file langsung"
-    'manifes-empty-box',  // kotak muat pertama kali (petugas pakai auto-load)
-    'format-perintis',    // info format manifes perintis
-    'format-penumpang',   // info format manifes penumpang
+    // Upload & manifes elements dihandle oleh updateManifesStatusUI()
+    // Hanya sembunyikan format info untuk petugas
+    'divider-upload',
+    'format-perintis',
+    'format-penumpang',
   ];
   adminOnlyIds.forEach(id=>{
     const el = document.getElementById(id);
