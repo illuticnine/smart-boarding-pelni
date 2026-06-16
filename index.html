@@ -3052,6 +3052,8 @@ async function saveShipBaru(){
   S.shipType = tipe;
   S.currentSesiId = sesi.sesi_id;
   saveState();
+  // Terapkan tipe ke UI (body class, display tabel, label)
+  setShipType(tipe);
 
   // Refresh daftar kapal aktif
   await refreshKapalAktif();
