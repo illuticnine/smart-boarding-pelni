@@ -753,8 +753,19 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
 <div class="page" id="page-dashboard">
 
+  <!-- TOMBOL TAMBAH KAPAL (Admin only) -->
+  <div id="btn-tambah-kapal-wrap" style="display:none;margin-bottom:12px">
+    <button class="btn btn-primary" style="width:100%;padding:14px;font-size:14px;font-weight:700"
+            onclick="showModal('modal-ship')">
+      ➕ Tambah Kapal Baru
+    </button>
+  </div>
+
+  <!-- DAFTAR KAPAL AKTIF (Admin) -->
+  <div id="dashboard-kapal-list" style="display:none"></div>
+
   <!-- CHECKLIST SESI BARU — hanya tampil untuk Admin jika belum siap -->
-  <div id="checklist-sesi" style="display:none">
+  <div id="checklist-sesi">
     <div class="cl-title">
       <span>📋</span> Panduan Memulai Sesi Baru
     </div>
@@ -1097,18 +1108,66 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 <!-- MODAL: SHIP -->
 <div class="modal-bg" id="modal-ship">
   <div class="modal">
-    <h3>🚢 Atur Info Kapal</h3>
-    <label style="font-size:12px;font-weight:600;color:var(--gray-600)">Nama Kapal</label>
-    <input type="text" id="inp-ship-name" placeholder="Contoh: KM. Tilongkabila"/>
-    <label style="font-size:12px;font-weight:600;color:var(--gray-600)">Rute Pelayaran</label>
-    <input type="text" id="inp-ship-route" placeholder="Contoh: Kendari → Bobong → Tikong"/>
-    <label style="font-size:12px;font-weight:600;color:var(--gray-600)">No. Voyage</label>
+    <h3 id="modal-ship-title">🚢 Tambah Kapal Baru</h3>
+    <label class="slabel">Nama Kapal <span style="color:var(--red)">*</span></label>
+    <input type="text" id="inp-ship-name" placeholder="Contoh: KM Tilongkabila"/>
+    <label class="slabel">No. Voyage <span style="color:var(--red)">*</span></label>
     <input type="text" id="inp-ship-voyage" placeholder="Contoh: 11/2026"/>
-    <label style="font-size:12px;font-weight:600;color:var(--gray-600)">Jam Keberangkatan</label>
+    <label class="slabel">Tipe Kapal</label>
+    <select id="inp-ship-type" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--gray-200);font-size:13px;margin-bottom:8px">
+      <option value="perintis">Kapal Perintis (Excel PPSS)</option>
+      <option value="penumpang">Kapal Penumpang (PDF Tiket)</option>
+    </select>
+    <label class="slabel">Rute Pelayaran</label>
+    <input type="text" id="inp-ship-route" placeholder="Contoh: Kendari → Baubau → Makassar"/>
+    <label class="slabel">Jam Keberangkatan</label>
     <input type="time" id="inp-ship-time"/>
+    <label class="slabel">Dermaga / Gate</label>
+    <input type="text" id="inp-ship-dermaga" placeholder="Contoh: Dermaga 1 / Gate A"/>
     <div class="modal-footer">
       <button class="btn btn-gray btn-sm" style="flex:1" onclick="closeModal('modal-ship')">Batal</button>
-      <button class="btn btn-primary btn-sm" style="flex:1" onclick="saveShip()">Simpan ✓</button>
+      <button class="btn btn-primary btn-sm" style="flex:1" onclick="saveShipBaru()">Tambah Kapal ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: PILIH KAPAL (untuk F2 login) -->
+<div class="modal-bg" id="modal-pilih-kapal" style="display:none">
+  <div class="modal">
+    <h3>⛵ Pilih Kapal Tugas</h3>
+    <p style="font-size:12px;color:var(--gray-500);margin-bottom:16px">
+      Anda bertugas di tangga kapal mana hari ini?
+    </p>
+    <div id="list-pilih-kapal" style="display:flex;flex-direction:column;gap:10px">
+      <!-- Diisi dinamis -->
+    </div>
+    <div style="margin-top:16px;font-size:11px;color:var(--gray-400);text-align:center">
+      Pilihan ini mengunci Anda ke kapal tersebut selama sesi boarding
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: LANJUT ATAU BARU (untuk admin login) -->
+<div class="modal-bg" id="modal-sesi-pilihan" style="display:none">
+  <div class="modal">
+    <h3>📋 Sesi Boarding</h3>
+    <p style="font-size:12px;color:var(--gray-500);margin-bottom:4px">
+      Ditemukan <b id="sesi-aktif-count">0</b> sesi kapal aktif di database:
+    </p>
+    <div id="list-sesi-aktif" style="margin-bottom:16px;max-height:200px;overflow-y:auto">
+      <!-- Diisi dinamis -->
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button class="btn" style="background:#E8F5E9;color:#2E7D32;border:1.5px solid #A5D6A7;
+                                  padding:12px;font-size:13px;font-weight:700"
+              onclick="lanjutSesiLama()">
+        ▶️ Lanjut Sesi
+      </button>
+      <button class="btn" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFB300;
+                                  padding:12px;font-size:13px;font-weight:700"
+              onclick="closeModal('modal-sesi-pilihan'); showModal('modal-ship')">
+        ➕ Tambah Kapal
+      </button>
     </div>
   </div>
 </div>
@@ -1186,18 +1245,27 @@ const ROLE_INFO = {
 let currentRole = null;  // null = belum login
 
 let S = {
+  // ── Multi-sesi ──────────────────────────────────────────
+  kapalAktif: [],            // array sesi kapal aktif [{sesi_id, nama_kapal, voyage, ...}]
+  currentSesiId: null,       // sesi_id yang sedang aktif (F2 terikat ke ini)
+
+  // ── Legacy single-ship (dipakai untuk backward compat) ──
   shipType: 'perintis',
   ship: { name:'', route:'', voyage:'', time:'' },
-  manifest: [],
+
+  // ── Data ────────────────────────────────────────────────
+  manifest: [],              // manifes kapal aktif (F2 & admin single)
   scanLog: [],
   transitLog: [],
   lanjutanLog: [],
   dupAlerts: [],
   logFilter: 'all',
+
+  // ── Config ──────────────────────────────────────────────
   gs: { url: GS_APPS_SCRIPT_URL, name:'', connected: GS_APPS_SCRIPT_URL!=='', autoSync: GS_APPS_SCRIPT_URL!=='', lastSync:'' },
   scanMode: 'camera',
   currentPos: 'F1',
-  _manifesLoadedAt: null,   // ISO timestamp terakhir manifes dimuat dari Sheets
+  _manifesLoadedAt: null,
 };
 
 function loadState(){
@@ -1299,8 +1367,15 @@ function showPage(id){
       syncStatusFromSupabase(true);
     }, 50);
   }
-  if(id==='scan') updateInfografis();
-  if(id==='dashboard') updateChecklist();
+  if(id==='scan'){
+    updateInfografis();
+    // F1: refresh kapal aktif untuk auto-detect
+    if(currentRole==='f1') refreshKapalAktif();
+  }
+  if(id==='dashboard'){
+    updateChecklist();
+    if(currentRole==='admin') renderDashboardMultiKapal();
+  }
   if(id==='transit'){
     renderTransitList();
     updateTrStats();
@@ -1408,16 +1483,50 @@ function manualCheck(){
 // ══════════════════════════════════════════
 // CORE: PROCESS TICKET
 // ══════════════════════════════════════════
-function processTicket(ticketNo){
+async function processTicket(ticketNo){
   const now = new Date();
   const timeStr = now.toLocaleTimeString('id-ID',{hour12:false});
   const ticketUp = ticketNo.toUpperCase().trim();
 
-  // Find in manifest
-  const pax = S.manifest.find(p=>{
+  // Cari di manifest lokal dulu (cepat)
+  let pax = S.manifest.find(p=>{
     const t = (p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
     return t===ticketUp;
   });
+
+  // Jika F1 dan tidak ketemu di manifest lokal, cari di Supabase semua sesi aktif
+  let paxSesiId = S.currentSesiId;
+  let paxKapal  = null;
+  if(!pax && S.currentPos==='F1' && S.kapalAktif.length > 0){
+    const sbPax = await sbFindTiket(ticketUp);
+    if(sbPax){
+      paxSesiId = sbPax.sesi_id;
+      paxKapal  = sbPax.nama_kapal;
+      // Buat objek pax sementara dari data Supabase
+      pax = {
+        'No Tiket'    : sbPax.no_tiket,
+        'Nama Pnp'    : sbPax.nama,
+        NO_TIKET      : sbPax.no_tiket,
+        NAMA          : sbPax.nama,
+        KELAS         : sbPax.kelas,
+        KATEGORI      : sbPax.kategori,
+        'Jen. Kelamin': sbPax.jen_kelamin,
+        'Pel. Tujuan' : sbPax.tujuan,
+        'Nama Kapal'  : sbPax.nama_kapal,
+        _status       : sbPax.status || 'pending',
+        _sesiId       : sbPax.sesi_id,
+      };
+    }
+  }
+
+  // Jika F2 dan pax bukan kapal yang dipilih → alert salah kapal
+  if(pax && S.currentPos==='F2' && paxSesiId && S.currentSesiId && paxSesiId !== S.currentSesiId){
+    showResult('KAPAL_SALAH', pax['Nama Pnp']||pax.NAMA||'—',
+      `Tiket ini untuk ${paxKapal||pax['Nama Kapal']||'kapal lain'} · Arahkan ke tangga yang benar`,
+      '', '', '');
+    vib([200,100,200]);
+    return;
+  }
 
   // Transit?
   const trEntry = S.transitLog.find(t=>
@@ -1490,8 +1599,18 @@ function processTicket(ticketNo){
   }
 
   lastScannedTicket = ticketNo; // untuk tombol catat penumpang lanjutan
-  const entry={time:timeStr,ticket:ticketNo,name,pos:S.currentPos,status,info,
-    gender,kategori,shipType:S.shipType};
+  const entry={
+    time    : timeStr,
+    ticket  : ticketNo,
+    name,
+    pos     : S.currentPos,
+    status,
+    info,
+    gender,
+    kategori,
+    shipType: paxKapal ? 'multi' : S.shipType,
+    sesiId  : paxSesiId || S.currentSesiId || getSesiId(),
+  };
   S.scanLog.unshift(entry);
   if(S.scanLog.length>500) S.scanLog.pop();
   saveState();
@@ -1503,7 +1622,7 @@ function processTicket(ticketNo){
   updateInfografis();
 
   // Simpan ke Supabase (real-time)
-  sbAddLog(entry);
+  sbAddLog({...entry, _sesiId: entry.sesiId});
 }
 
 function getName(pax){
@@ -1525,6 +1644,10 @@ function showResult(status,name,info,gender,kategori,tujuan){
     cls='ok';icon='🚢';
     label='NAIK KAPAL — KONFIRMASI!';
     col='var(--teal)';vib([100,50,100]);
+  } else if(status==='KAPAL_SALAH'){
+    cls='dup';icon='🚢';
+    label='KAPAL SALAH — ARAHKAN KE TANGGA LAIN';
+    col='#7B1FA2';vib([100,50,100,50,100]);
   } else if(status==='DUPLIKAT'){
     cls='dup';icon='🚨';
     label='DUPLIKAT — TAHAN!';
@@ -1937,17 +2060,37 @@ function applyRole(role){
   // Label "Upload File Manifes" - hanya Admin
   const uploadLabel = document.querySelector('#load-from-sheets-box .slabel:last-of-type');
 
-  // Update checklist untuk admin
-  if(isAdmin) setTimeout(updateChecklist, 200);
+  // Admin: tampilkan multi-kapal UI, sembunyikan single-ship
+  const btnTambah   = document.getElementById('btn-tambah-kapal-wrap');
+  const dashKapal   = document.getElementById('dashboard-kapal-list');
+  if(isAdmin){
+    if(btnTambah)  btnTambah.style.display  = 'block';
+    if(dashKapal)  dashKapal.style.display  = 'block';
+    setTimeout(()=>{
+      updateChecklist();
+      cekSesiAdminLogin().then(()=> renderDashboardMultiKapal());
+    }, 200);
+  } else {
+    if(btnTambah)  btnTambah.style.display  = 'none';
+    if(dashKapal)  dashKapal.style.display  = 'none';
+  }
 
   // Auto-load manifes dan mulai refresh status untuk petugas
   if(!isAdmin){
-    autoInitPetugas().then(()=>{
-      setTimeout(startPetugasStatusRefresh, 3000);
-      updateInfografis();
-    }).catch(()=>{
-      setTimeout(startPetugasStatusRefresh, 5000);
-    });
+    if(role === 'f2'){
+      // F2 harus pilih kapal dulu
+      tampilkanPilihKapalF2().then(()=>{
+        setTimeout(startPetugasStatusRefresh, 3000);
+      });
+    } else {
+      // F1 langsung load semua manifes aktif
+      autoInitPetugas().then(()=>{
+        setTimeout(startPetugasStatusRefresh, 3000);
+        updateInfografis();
+      }).catch(()=>{
+        setTimeout(startPetugasStatusRefresh, 5000);
+      });
+    }
   }
 
   // Navigasi ke halaman default
@@ -1955,9 +2098,9 @@ function applyRole(role){
 }
 
 async function autoInitPetugas(){
-  // Selalu tarik fresh dari Supabase saat login petugas
+  // F2: sudah pilih kapal via pilihKapalF2, pakai currentSesiId
+  // F1: load semua manifes dari semua sesi aktif (untuk auto-detect kapal)
   if(!sb){
-    // Supabase belum dikonfigurasi - coba init ulang sekali
     const ok = initSupabase();
     if(!ok){
       showToast('⚠️ Database belum dikonfigurasi · Isi SUPABASE_URL di index.html','warning');
@@ -2260,8 +2403,9 @@ function updateInfografis(){
 async function sbAddLog(entry){
   if(!sb) return;
   try{
+    const sesiId = entry._sesiId || entry.sesiId || getSesiId();
     await sb.from('scan_log').insert({
-      sesi_id    : getSesiId(),
+      sesi_id    : sesiId,
       waktu      : entry.time,
       no_tiket   : entry.ticket,
       nama       : entry.name,
@@ -2288,36 +2432,13 @@ async function sbGetScanLog(){
 // ── MANIFES ───────────────────────────────────────────────────
 async function sbUploadManifes(manifest, tipeKapal){
   if(!sb) return false;
-  const sesiId = getSesiId();
+  // Pakai currentSesiId jika sudah di-set (dari saveShipBaru)
+  const sesiId = S.currentSesiId || getSesiId();
 
   try{
-    // Cek apakah ada sesi AKTIF sebelumnya di database
-    const { data: sesiLama } = await sb.from('sesi_kapal')
-      .select('sesi_id, nama_kapal, voyage')
-      .eq('status','aktif')
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    const sesiLamaId = sesiLama && sesiLama.length > 0 ? sesiLama[0].sesi_id : null;
-    const isSesiBaruBerbeda = sesiLamaId && sesiLamaId !== sesiId;
-
-    if(isSesiBaruBerbeda){
-      // ── SESI BARU: arsip scan_log lama lalu hapus ──
-      console.log('[SB] Sesi baru terdeteksi, arsip sesi lama:', sesiLamaId);
-
-      // Tandai sesi lama sebagai arsip
-      await sb.from('sesi_kapal')
-        .update({ status: 'arsip' })
-        .eq('sesi_id', sesiLamaId);
-
-      // Hapus scan_log sesi lama (sudah terarsip di sesi_kapal)
-      await sb.from('scan_log').delete().eq('sesi_id', sesiLamaId);
-
-      // Hapus manifes sesi lama
-      await sb.from('manifes').delete().eq('sesi_id', sesiLamaId);
-
-      console.log('[SB] Sesi lama diarsip & dibersihkan');
-    }
+    // Tidak lagi hapus sesi lain — multi-sesi dikelola manual oleh Admin
+    // Hanya upsert sesi saat ini
+    // Multi-sesi: setiap kapal punya sesiId tersendiri, tidak perlu arsip otomatis
 
     // ── UPSERT manifes sesi baru ──
     const rows = manifest.map(p => ({
@@ -2382,11 +2503,12 @@ async function sbUploadManifes(manifest, tipeKapal){
 
 async function sbGetManifes(){
   if(!sb) throw new Error('Supabase belum dikonfigurasi');
-  const sesiId = getSesiId();
-
-  // Cari sesi aktif jika sesi_id belum ada (kapal belum diatur)
+  // Petugas F2: pakai currentSesiId yang sudah dipilih
+  const sesiId = S.currentSesiId || getSesiId();
   let targetSesiId = sesiId;
-  if(!S.ship.name && !S.ship.voyage){
+
+  // Jika belum ada currentSesiId, cari sesi aktif terbaru
+  if(!S.currentSesiId && !S.ship.name && !S.ship.voyage){
     const { data: sesiList } = await sb.from('sesi_kapal')
       .select('sesi_id,nama_kapal,voyage,tipe_kapal')
       .eq('status','aktif')
@@ -2709,64 +2831,442 @@ function renderLogFromCache(){
 // CHECKLIST SESI BARU
 // ══════════════════════════════════════
 function updateChecklist(){
-  // Hanya tampil untuk admin
   const box    = document.getElementById('checklist-sesi');
   const banner = document.getElementById('checklist-done-banner');
   if(!box || !banner) return;
-  if(currentRole !== 'admin'){ box.style.display='none'; banner.style.display='none'; return; }
 
-  const hasShip     = !!(S.ship.name && S.ship.name.trim() && S.ship.name !== 'Atur Kapal');
-  const hasVoyage   = !!(S.ship.voyage && S.ship.voyage.trim());
-  const hasManifes  = S.manifest.length > 0;
-  const allDone     = hasShip && hasVoyage && hasManifes;
-
-  // Sembunyikan checklist jika semua sudah selesai
-  if(allDone){
+  // Hanya untuk admin
+  if(currentRole !== 'admin'){
     box.style.display    = 'none';
-    banner.style.display = 'block';
+    banner.style.display = 'none';
     return;
   }
 
-  box.style.display    = 'block';
-  banner.style.display = 'none';
+  const hasShip    = !!(S.ship.name   && S.ship.name.trim()   && S.ship.name !== 'Atur Kapal');
+  const hasVoyage  = !!(S.ship.voyage && S.ship.voyage.trim());
+  const hasManifes = S.manifest.length > 0;
+  const allDone    = hasShip && hasVoyage && hasManifes;
 
-  // Step 1 — Atur Info Kapal
-  const step1 = document.getElementById('cl-step-1');
-  if(step1){
-    if(hasShip && hasVoyage){
-      step1.className = 'cl-item done';
-      step1.querySelector('.cl-action').outerHTML = '<span class="cl-done-icon">✅</span>';
-    } else {
-      step1.className = 'cl-item active';
-    }
+  if(allDone){
+    box.style.display    = 'none';
+    banner.style.display = 'block';
+  } else {
+    box.style.display    = 'block';
+    banner.style.display = 'none';
   }
 
-  // Step 2 — Upload Manifes
+  // ── Step 1: Atur Info Kapal ──
+  const step1   = document.getElementById('cl-step-1');
+  if(step1){
+    const isDone1 = hasShip && hasVoyage;
+    step1.className = 'cl-item ' + (isDone1 ? 'done' : 'active');
+    // Update tombol aksi
+    const existing = step1.querySelector('.cl-action,.cl-done-icon');
+    if(existing) existing.remove();
+    const el1 = document.createElement('span');
+    if(isDone1){
+      el1.className   = 'cl-done-icon';
+      el1.textContent = '✅';
+    } else {
+      el1.className   = 'cl-action';
+      el1.textContent = 'Atur →';
+      el1.onclick     = ()=>showModal('modal-ship');
+    }
+    step1.appendChild(el1);
+  }
+
+  // ── Step 2: Upload Manifes ──
   const step2 = document.getElementById('cl-step-2');
   if(step2){
-    if(hasManifes){
-      step2.className = 'cl-item done';
-      const action = step2.querySelector('.cl-action');
-      if(action) action.outerHTML = '<span class="cl-done-icon">✅</span>';
-    } else if(hasShip && hasVoyage){
-      step2.className = 'cl-item active';
+    const isDone2   = hasManifes;
+    const isActive2 = !isDone2 && hasShip && hasVoyage;
+    step2.className = 'cl-item ' + (isDone2 ? 'done' : isActive2 ? 'active' : 'pending');
+    const existing2 = step2.querySelector('.cl-action,.cl-done-icon');
+    if(existing2) existing2.remove();
+    const el2 = document.createElement('span');
+    if(isDone2){
+      el2.className   = 'cl-done-icon';
+      el2.textContent = '✅';
     } else {
-      step2.className = 'cl-item pending';
+      el2.className   = 'cl-action';
+      el2.textContent = 'Upload →';
+      el2.onclick     = ()=>showPage('manifest');
+      if(!isActive2) el2.style.opacity = '.4';
     }
+    step2.appendChild(el2);
   }
 
-  // Step 3 — Verifikasi
+  // ── Step 3: Verifikasi ──
   const step3 = document.getElementById('cl-step-3');
   const icon3 = document.getElementById('cl-step-3-icon');
   if(step3){
-    if(hasManifes){
-      step3.className = 'cl-item done';
-      if(icon3) icon3.textContent = `✅ ${S.manifest.length} penumpang`;
-    } else {
-      step3.className = 'cl-item pending';
-      if(icon3) icon3.textContent = '⏳';
-    }
+    step3.className = 'cl-item ' + (hasManifes ? 'done' : 'pending');
+    if(icon3) icon3.textContent = hasManifes
+      ? '✅ ' + S.manifest.length + ' penumpang'
+      : '⏳';
   }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// SUPABASE — FUNGSI MULTI-SESI
+// ══════════════════════════════════════════════════════════════
+
+// Ambil semua sesi aktif dari Supabase
+async function sbGetSesiAktif(){
+  if(!sb) return [];
+  try{
+    const { data, error } = await sb.from('sesi_kapal')
+      .select('*')
+      .eq('status','aktif')
+      .order('created_at', { ascending: true });
+    if(error) throw error;
+    return data || [];
+  }catch(e){
+    console.warn('[SB] getSesiAktif error:', e.message);
+    return [];
+  }
+}
+
+// Tambah kapal baru (buat sesi baru)
+async function sbTambahKapal({ nama_kapal, voyage, tipe_kapal, rute, jam_etd, dermaga }){
+  if(!sb) return null;
+  const sesiId = nama_kapal.replace(/\s+/g,'_').toUpperCase()
+               + '_' + String(voyage).replace(/\s+/g,'');
+  try{
+    const { data, error } = await sb.from('sesi_kapal').upsert({
+      sesi_id    : sesiId,
+      nama_kapal, voyage, tipe_kapal,
+      rute       : rute    || '',
+      jam_etd    : jam_etd || '',
+      dermaga    : dermaga || '',
+      status     : 'aktif',
+      total_manifes: 0,
+    }, { onConflict: 'sesi_id' }).select().single();
+    if(error) throw error;
+    return data;
+  }catch(e){
+    console.error('[SB] tambahKapal error:', e.message);
+    return null;
+  }
+}
+
+// Selesai & arsip satu kapal
+async function sbSelesaiKapal(sesiId){
+  if(!sb) return false;
+  try{
+    await sb.from('sesi_kapal').update({
+      status     : 'arsip',
+      selesai_at : new Date().toISOString(),
+    }).eq('sesi_id', sesiId);
+    return true;
+  }catch(e){
+    console.error('[SB] selesaiKapal error:', e.message);
+    return false;
+  }
+}
+
+// Cari tiket di SEMUA sesi aktif (untuk F1)
+async function sbFindTiket(noTiket){
+  if(!sb) return null;
+  const sesiAktif = S.kapalAktif.map(k=>k.sesi_id);
+  if(!sesiAktif.length) return null;
+  try{
+    const { data, error } = await sb.from('manifes')
+      .select('*')
+      .eq('no_tiket', noTiket.trim())
+      .in('sesi_id', sesiAktif)
+      .limit(1)
+      .single();
+    if(error) return null;
+    return data;
+  }catch(e){ return null; }
+}
+
+// Cek scan duplikat untuk satu tiket di satu sesi
+async function sbCekDuplikat(sesiId, noTiket, pos){
+  if(!sb) return { f1: false, f2: false };
+  try{
+    const { data } = await sb.from('scan_log')
+      .select('pos, status')
+      .eq('sesi_id', sesiId)
+      .eq('no_tiket', noTiket)
+      .in('status', ['OK','NAIK']);
+    if(!data || !data.length) return { f1: false, f2: false };
+    return {
+      f1: data.some(r => r.pos === 'F1'),
+      f2: data.some(r => r.pos === 'F2'),
+    };
+  }catch(e){ return { f1: false, f2: false }; }
+}
+
+// Update total_manifes di sesi_kapal setelah upload
+async function sbUpdateTotalManifes(sesiId, total){
+  if(!sb) return;
+  try{
+    await sb.from('sesi_kapal')
+      .update({ total_manifes: total })
+      .eq('sesi_id', sesiId);
+  }catch(e){ console.warn('[SB] updateTotal error:', e.message); }
+}
+
+// Refresh daftar kapal aktif ke S.kapalAktif
+async function refreshKapalAktif(){
+  const list = await sbGetSesiAktif();
+  S.kapalAktif = list;
+  return list;
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// MULTI-SESI — UI FUNCTIONS
+// ══════════════════════════════════════════════════════════════
+
+// Simpan kapal baru ke Supabase
+async function saveShipBaru(){
+  const nama    = document.getElementById('inp-ship-name').value.trim();
+  const voyage  = document.getElementById('inp-ship-voyage').value.trim();
+  const tipe    = document.getElementById('inp-ship-type').value;
+  const rute    = document.getElementById('inp-ship-route').value.trim();
+  const jam     = document.getElementById('inp-ship-time').value;
+  const dermaga = document.getElementById('inp-ship-dermaga').value.trim();
+
+  if(!nama || !voyage){
+    showToast('⚠️ Nama kapal dan voyage wajib diisi','error');
+    return;
+  }
+
+  showToast('⏳ Menambahkan kapal...','warning');
+  const sesi = await sbTambahKapal({ nama_kapal:nama, voyage, tipe_kapal:tipe, rute, jam_etd:jam, dermaga });
+  if(!sesi){
+    showToast('❌ Gagal menambahkan kapal','error');
+    return;
+  }
+
+  // Update S state
+  S.ship = { name:nama, route:rute, voyage, time:jam };
+  S.shipType = tipe;
+  S.currentSesiId = sesi.sesi_id;
+  saveState();
+
+  // Refresh daftar kapal aktif
+  await refreshKapalAktif();
+
+  closeModal('modal-ship');
+  // Reset form
+  ['inp-ship-name','inp-ship-voyage','inp-ship-route','inp-ship-dermaga'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  const timeEl = document.getElementById('inp-ship-time');
+  if(timeEl) timeEl.value = '';
+
+  showToast(`✅ KM ${nama} ditambahkan · Upload manifes untuk kapal ini`,'success');
+  updateChecklist();
+  renderDashboardMultiKapal();
+  showPage('manifest');
+}
+
+// Legacy saveShip - redirect ke saveShipBaru
+function saveShip(){ saveShipBaru(); }
+
+// Lanjut sesi lama (admin masuk kembali)
+async function lanjutSesiLama(){
+  closeModal('modal-sesi-pilihan');
+  showToast('⏳ Memuat data sesi aktif...','warning');
+  await refreshKapalAktif();
+
+  if(S.kapalAktif.length > 0){
+    // Ambil kapal pertama sebagai current
+    const k = S.kapalAktif[0];
+    S.currentSesiId = k.sesi_id;
+    S.ship = { name:k.nama_kapal, route:k.rute||'', voyage:k.voyage, time:k.jam_etd||'' };
+    S.shipType = k.tipe_kapal || 'perintis';
+    saveState();
+
+    // Sync manifest dari Supabase
+    await perbaruiManifes();
+    renderDashboardMultiKapal();
+    showToast(`✅ Melanjutkan sesi · ${S.kapalAktif.length} kapal aktif`,'success');
+  }
+  updateChecklist();
+}
+
+// Tampilkan dialog pilihan sesi saat admin login
+async function cekSesiAdminLogin(){
+  const sesiList = await sbGetSesiAktif();
+  S.kapalAktif = sesiList;
+
+  if(sesiList.length === 0){
+    // Tidak ada sesi aktif → langsung tampilkan form tambah kapal
+    setTimeout(()=> showModal('modal-ship'), 300);
+    return;
+  }
+
+  // Ada sesi aktif → tanyakan lanjut atau baru
+  const countEl = document.getElementById('sesi-aktif-count');
+  const listEl  = document.getElementById('list-sesi-aktif');
+  if(countEl) countEl.textContent = sesiList.length;
+
+  if(listEl){
+    listEl.innerHTML = sesiList.map(s=>`
+      <div style="padding:10px;background:var(--gray-50);border-radius:8px;
+                  border:1px solid var(--gray-200);margin-bottom:6px">
+        <div style="font-weight:700;font-size:13px">🚢 ${s.nama_kapal}</div>
+        <div style="font-size:11px;color:var(--gray-500)">
+          Voyage ${s.voyage}
+          ${s.dermaga ? ' · '+s.dermaga : ''}
+          ${s.jam_etd ? ' · ETD '+s.jam_etd : ''}
+        </div>
+        <div style="font-size:11px;color:var(--green);margin-top:2px">
+          ${s.total_manifes || 0} penumpang di manifes
+        </div>
+      </div>
+    `).join('');
+  }
+
+  setTimeout(()=> showModal('modal-sesi-pilihan'), 300);
+}
+
+// Render dashboard multi-kapal
+async function renderDashboardMultiKapal(){
+  const container = document.getElementById('dashboard-kapal-list');
+  if(!container) return;
+
+  if(!S.kapalAktif.length){
+    container.innerHTML = `
+      <div style="text-align:center;padding:30px;color:var(--gray-400)">
+        <div style="font-size:32px;margin-bottom:8px">🚢</div>
+        <div style="font-weight:600">Belum ada kapal aktif</div>
+        <div style="font-size:12px;margin-top:4px">Klik + Tambah Kapal untuk memulai</div>
+      </div>`;
+    return;
+  }
+
+  // Ambil stats per kapal dari Supabase
+  const cards = await Promise.all(S.kapalAktif.map(async kapal => {
+    const { data: scanData } = await sb.from('scan_log')
+      .select('status,pos')
+      .eq('sesi_id', kapal.sesi_id);
+
+    const scans  = scanData || [];
+    const f1     = scans.filter(r=>r.pos==='F1'&&r.status==='OK').length;
+    const naik   = scans.filter(r=>r.status==='NAIK').length;
+    const total  = kapal.total_manifes || 0;
+    const sisa   = Math.max(0, total - naik);
+    const pct    = total > 0 ? Math.round(naik/total*100) : 0;
+
+    return { kapal, f1, naik, sisa, total, pct };
+  }));
+
+  container.innerHTML = cards.map(({kapal, f1, naik, sisa, total, pct}) => `
+    <div style="background:linear-gradient(135deg,#0A2342,#1565C0);border-radius:14px;
+                padding:16px;margin-bottom:12px;color:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+        <div>
+          <div style="font-size:15px;font-weight:800">🚢 ${kapal.nama_kapal}</div>
+          <div style="font-size:11px;opacity:.7;margin-top:2px">
+            Voyage ${kapal.voyage}
+            ${kapal.dermaga ? ' · '+kapal.dermaga : ''}
+            ${kapal.jam_etd ? ' · ETD '+kapal.jam_etd : ''}
+          </div>
+        </div>
+        <button onclick="konfirmasiSelesaiKapal('${kapal.sesi_id}','${kapal.nama_kapal}')"
+                style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
+                       color:#fff;border-radius:8px;padding:6px 10px;font-size:11px;
+                       font-weight:700;cursor:pointer">
+          ✅ Selesai
+        </button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+        <div style="text-align:center;background:rgba(255,255,255,.1);border-radius:8px;padding:8px">
+          <div style="font-size:22px;font-weight:800;color:#69F0AE">${f1}</div>
+          <div style="font-size:10px;opacity:.7">Lewat F1</div>
+        </div>
+        <div style="text-align:center;background:rgba(255,255,255,.1);border-radius:8px;padding:8px">
+          <div style="font-size:22px;font-weight:800;color:#FFD740">${naik}</div>
+          <div style="font-size:10px;opacity:.7">Naik Kapal</div>
+        </div>
+        <div style="text-align:center;background:rgba(255,255,255,.1);border-radius:8px;padding:8px">
+          <div style="font-size:22px;font-weight:800">${sisa}</div>
+          <div style="font-size:10px;opacity:.7">Belum Naik</div>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,.15);border-radius:4px;height:6px;overflow:hidden">
+        <div style="background:linear-gradient(90deg,#69F0AE,#00E676);height:100%;
+                    border-radius:4px;width:${pct}%;transition:width .5s ease"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px;opacity:.6">
+        <span>${naik} dari ${total} naik</span>
+        <span style="color:#69F0AE;font-weight:700">${pct}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Konfirmasi selesai embarkasi kapal
+async function konfirmasiSelesaiKapal(sesiId, namaKapal){
+  if(!confirm(`Selesaikan embarkasi ${namaKapal}?\n\nData akan diarsip dan kapal dihapus dari daftar aktif.`)) return;
+
+  showToast('⏳ Mengarsip data...','warning');
+  const ok = await sbSelesaiKapal(sesiId);
+  if(ok){
+    await refreshKapalAktif();
+    renderDashboardMultiKapal();
+    updateChecklist();
+    showToast(`✅ ${namaKapal} selesai & diarsip`,'success');
+  } else {
+    showToast('❌ Gagal mengarsip kapal','error');
+  }
+}
+
+// Tampilkan modal pilih kapal untuk petugas F2
+async function tampilkanPilihKapalF2(){
+  const sesiList = await sbGetSesiAktif();
+  S.kapalAktif = sesiList;
+
+  const listEl = document.getElementById('list-pilih-kapal');
+  if(!listEl) return;
+
+  if(!sesiList.length){
+    listEl.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:20px">Belum ada kapal aktif.<br>Hubungi Admin.</div>';
+    showModal('modal-pilih-kapal');
+    return;
+  }
+
+  listEl.innerHTML = sesiList.map(s=>`
+    <button onclick="pilihKapalF2('${s.sesi_id}','${s.nama_kapal}','${s.tipe_kapal||'perintis'}')"
+            style="width:100%;padding:14px;border-radius:10px;border:2px solid var(--gray-200);
+                   background:#fff;text-align:left;cursor:pointer;font-size:14px;">
+      <div style="font-weight:800">🚢 ${s.nama_kapal}</div>
+      <div style="font-size:11px;color:var(--gray-500);margin-top:3px">
+        Voyage ${s.voyage}
+        ${s.dermaga ? ' · '+s.dermaga : ''}
+        ${s.jam_etd ? ' · ETD '+s.jam_etd : ''}
+        · ${s.total_manifes||0} pnp
+      </div>
+    </button>
+  `).join('');
+
+  showModal('modal-pilih-kapal');
+}
+
+// Petugas F2 pilih kapal
+async function pilihKapalF2(sesiId, namaKapal, tipeKapal){
+  closeModal('modal-pilih-kapal');
+  S.currentSesiId = sesiId;
+  S.ship = { name: namaKapal, route:'', voyage:'', time:'' };
+  S.shipType = tipeKapal;
+  saveState();
+
+  // Update label
+  const lbl = document.getElementById('ship-label');
+  if(lbl) lbl.textContent = namaKapal;
+
+  showToast(`✅ Terkunci ke ${namaKapal} · Siap scan tangga kapal`,'success');
+
+  // Load manifes untuk kapal ini
+  await autoInitPetugas();
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
@@ -3652,16 +4152,7 @@ function openModal(id){
   }
   document.getElementById(id).classList.add('open');
 }
-function saveShip(){
-  S.ship.name=document.getElementById('inp-ship-name').value.trim();
-  S.ship.route=document.getElementById('inp-ship-route').value.trim();
-  S.ship.voyage=document.getElementById('inp-ship-voyage').value.trim();
-  S.ship.time=document.getElementById('inp-ship-time').value;
-  document.getElementById('ship-label').textContent=S.ship.name||'Atur Kapal';
-  saveState(); closeModal('modal-ship'); updateDashboard();
-  showToast('✅ Info kapal disimpan','success');
-  updateChecklist();
-}
+// saveShip → lihat saveShipBaru()
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-bg').forEach(m=>
   m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); })
@@ -3861,35 +4352,61 @@ async function resetScanOnly(){
 }
 
 // Reset semua termasuk manifes (mulai dari awal total)
-function resetAllData(){
-  if(!confirm('Reset SEMUA data?\n\nManifes, log scan, dan semua data akan dihapus.\nKonfigurasi Supabase tetap tersimpan.')) return;
+async function resetAllData(){
+  if(!confirm('Reset SEMUA data?\n\nManifes, log scan, dan semua data akan dihapus dari lokal DAN database Supabase.\nKonfigurasi Supabase tetap tersimpan.')) return;
+
+  // ── Hapus dari Supabase terlebih dahulu ──
+  if(sb){
+    showToast('⏳ Menghapus data dari database...','warning');
+    try{
+      // Hapus semua sesi aktif dan arsip
+      const { data: semuaSesi } = await sb.from('sesi_kapal').select('sesi_id');
+      if(semuaSesi && semuaSesi.length > 0){
+        for(const sesi of semuaSesi){
+          await sb.from('scan_log').delete().eq('sesi_id', sesi.sesi_id);
+          await sb.from('manifes').delete().eq('sesi_id', sesi.sesi_id);
+          await sb.from('penumpang_lanjutan').delete().eq('sesi_id', sesi.sesi_id);
+        }
+        await sb.from('sesi_kapal').delete().neq('id', 0); // hapus semua baris
+      }
+      console.log('[SB] Semua data Supabase dihapus');
+    }catch(e){
+      console.warn('[SB] Gagal hapus Supabase:', e.message);
+      showToast('⚠️ Gagal hapus database: '+e.message,'error');
+      return;
+    }
+  }
+
+  // ── Reset data lokal ──
   S.scanLog=[];
   S.transitLog=[];
   S.lanjutanLog=[];
   S.dupAlerts=[];
   S.manifest=[];
   S._manifesLoadedAt=null;
-  // Reset info kapal di state
   S.ship = { name:'', route:'', voyage:'', time:'' };
   S.shipType = 'perintis';
   saveState();
-  // Reset UI info kapal
+
+  // ── Reset UI ──
   setShipType('perintis');
   const shipLbl = document.getElementById('ship-label');
   if(shipLbl) shipLbl.textContent = 'Atur Kapal';
-  // Reset field modal kapal jika terbuka
   ['inp-ship-name','inp-ship-route','inp-ship-voyage','inp-ship-time'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.value = '';
   });
+
   updateDashboard();
   renderManifestTable();
   renderTransitList();
   renderLog();
+  updateChecklist();
   document.getElementById('manifest-table-card').style.display='none';
   document.getElementById('manifest-summary').style.display='none';
-  showToast('✅ Semua data direset termasuk info kapal','success');
+  showToast('✅ Semua data direset — lokal & database bersih','success');
 }
+
 
 // Alias untuk kompatibilitas
 function resetAppData(){ resetAllData(); }
