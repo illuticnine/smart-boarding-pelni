@@ -3431,24 +3431,10 @@ function saveShip(){ saveShipBaru(); }
 // Lanjut sesi lama (admin masuk kembali)
 async function lanjutSesiLama(){
   closeModal('modal-sesi-pilihan');
-  showToast('⏳ Memuat data sesi aktif...','warning');
   await refreshKapalAktif();
-
   if(S.kapalAktif.length > 0){
-    // Ambil kapal pertama sebagai current
-    const k = S.kapalAktif[0];
-    S.currentSesiId = k.sesi_id;
-    S.ship = { name:k.nama_kapal, route:k.rute||'', voyage:k.voyage, time:k.jam_etd||'' };
-    S.shipType = k.tipe_kapal || 'perintis';
-    saveState();
-
-    // Sync manifest dari Supabase
-    await perbaruiManifes();
-    renderDashboardMultiKapal();
-    updateManifesPage();
-    showToast(`✅ Melanjutkan sesi · ${S.kapalAktif.length} kapal aktif`,'success');
+    await _lanjutSesiOtomatis(S.kapalAktif);
   }
-  updateChecklist();
 }
 
 // Tampilkan dialog pilihan sesi saat admin login
@@ -3457,12 +3443,18 @@ async function cekSesiAdminLogin(){
   S.kapalAktif = sesiList;
 
   if(sesiList.length === 0){
-    // Tidak ada sesi aktif → langsung tampilkan form tambah kapal
-    setTimeout(()=> openModal('modal-ship'), 300);
+    // Tidak ada sesi aktif → langsung ke tab manifes untuk tambah kapal
+    updateManifesPage();
     return;
   }
 
-  // Ada sesi aktif → tanyakan lanjut atau baru
+  if(sesiList.length === 1){
+    // Hanya 1 sesi aktif → lanjut otomatis tanpa tanya
+    await _lanjutSesiOtomatis(sesiList);
+    return;
+  }
+
+  // 2+ sesi aktif → tampilkan pilihan
   const countEl = document.getElementById('sesi-aktif-count');
   const listEl  = document.getElementById('list-sesi-aktif');
   if(countEl) countEl.textContent = sesiList.length;
@@ -3485,6 +3477,35 @@ async function cekSesiAdminLogin(){
   }
 
   setTimeout(()=> openModal('modal-sesi-pilihan'), 300);
+}
+
+// Helper: lanjut sesi otomatis (1 sesi aktif)
+async function _lanjutSesiOtomatis(sesiList){
+  const k = sesiList[0];
+  S.currentSesiId = k.sesi_id;
+  S.ship    = { name:k.nama_kapal, route:k.rute||'', voyage:k.voyage, time:k.jam_etd||'' };
+  S.shipType = k.tipe_kapal || 'perintis';
+  saveState();
+  setShipType(k.tipe_kapal);
+
+  showToast('⏳ Memuat data sesi aktif...','warning');
+  try{
+    const manifes = await sbGetManifes();
+    S.manifest = manifes;
+    S.manifestPage = 1;
+    saveState();
+  }catch(e){
+    console.warn('[SB] Gagal load manifes saat login:', e.message);
+  }
+
+  await syncStatusFromSupabase(true);
+  renderDashboardMultiKapal();
+  updateManifesPage();
+  updateAccordionState();
+  updateChecklist();
+  updateShipLabel();
+  showToast('✅ Sesi dilanjutkan · '+k.nama_kapal+' · '+
+            (S.manifest.length)+' penumpang','success');
 }
 
 // Render dashboard multi-kapal
