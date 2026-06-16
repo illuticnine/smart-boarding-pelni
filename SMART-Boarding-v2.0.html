@@ -281,6 +281,60 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   .infog-pct{display:flex;justify-content:space-between;margin-top:5px;
     font-size:10px;color:rgba(255,255,255,.5)}
 
+
+  /* ── CHECKLIST SESI BARU ── */
+  #checklist-sesi{
+    margin-bottom:14px;
+    border-radius:14px;
+    overflow:hidden;
+    border:2px solid #FFB300;
+    background:#FFFDE7;
+    padding:14px 16px;
+  }
+  .cl-title{
+    font-size:11px;font-weight:800;letter-spacing:1px;
+    text-transform:uppercase;color:#E65100;margin-bottom:12px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .cl-item{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 10px;border-radius:8px;
+    margin-bottom:6px;font-size:13px;font-weight:600;
+    background:rgba(255,255,255,.7);
+    border:1.5px solid #FFE082;
+    transition:all .3s;
+    cursor:default;
+  }
+  .cl-item.done{
+    background:#E8F5E9;border-color:#A5D6A7;color:#2E7D32;
+  }
+  .cl-item.done .cl-num{background:#43A047;color:#fff;}
+  .cl-item.active{
+    background:#FFF8E1;border-color:#FFB300;color:#E65100;
+    box-shadow:0 2px 8px rgba(255,179,0,.2);
+  }
+  .cl-item.active .cl-num{background:#FFB300;color:#fff;}
+  .cl-item.pending{color:var(--gray-400);border-color:#EEE;}
+  .cl-item.pending .cl-num{background:#EEE;color:var(--gray-400);}
+  .cl-num{
+    width:22px;height:22px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:800;flex-shrink:0;
+    background:var(--gray-200);color:var(--gray-600);
+  }
+  .cl-action{
+    margin-left:auto;font-size:11px;font-weight:700;
+    color:#1565C0;cursor:pointer;text-decoration:underline;
+  }
+  .cl-done-icon{margin-left:auto;font-size:14px;}
+  #checklist-done-banner{
+    display:none;
+    background:linear-gradient(135deg,#1B5E20,#2E7D32);
+    border-radius:14px;padding:14px 16px;
+    color:#fff;text-align:center;margin-bottom:14px;
+    font-weight:700;font-size:14px;
+  }
+
 </style>
 </head>
 <body class="perintis">
@@ -698,6 +752,50 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
 <div class="page" id="page-dashboard">
+
+  <!-- CHECKLIST SESI BARU — hanya tampil untuk Admin jika belum siap -->
+  <div id="checklist-sesi" style="display:none">
+    <div class="cl-title">
+      <span>📋</span> Panduan Memulai Sesi Baru
+    </div>
+
+    <div class="cl-item" id="cl-step-1">
+      <div class="cl-num">1</div>
+      <div>
+        <div>Atur Info Kapal</div>
+        <div style="font-size:11px;font-weight:400;color:var(--gray-500)">Nama kapal, voyage, rute & jam berangkat</div>
+      </div>
+      <span class="cl-action" onclick="showModal('modal-ship')">Atur →</span>
+    </div>
+
+    <div class="cl-item pending" id="cl-step-2">
+      <div class="cl-num">2</div>
+      <div>
+        <div>Upload Manifes</div>
+        <div style="font-size:11px;font-weight:400;color:var(--gray-500)">File Excel PPSS atau PDF tiket penumpang</div>
+      </div>
+      <span class="cl-action" onclick="showPage('manifest')">Upload →</span>
+    </div>
+
+    <div class="cl-item pending" id="cl-step-3">
+      <div class="cl-num">3</div>
+      <div>
+        <div>Verifikasi Data</div>
+        <div style="font-size:11px;font-weight:400;color:var(--gray-500)">Pastikan jumlah penumpang sesuai manifes</div>
+      </div>
+      <span class="cl-done-icon" id="cl-step-3-icon">⏳</span>
+    </div>
+
+    <div style="font-size:11px;color:#E65100;margin-top:10px;padding:8px;
+                background:rgba(255,152,0,.1);border-radius:8px;line-height:1.7">
+      ⚠️ <b>Penting:</b> Selalu atur info kapal <b>sebelum</b> upload manifes agar sesi baru terdeteksi dengan benar.
+    </div>
+  </div>
+
+  <!-- BANNER SIAP — tampil saat semua langkah selesai -->
+  <div id="checklist-done-banner">
+    ✅ Sesi Boarding Siap — Petugas Dapat Login
+  </div>
 
   <div class="card" style="background:linear-gradient(135deg,var(--navy),var(--navy-mid));color:#fff;padding:20px">
     <div style="font-size:10px;opacity:.55;font-weight:700;letter-spacing:1px;text-transform:uppercase">Keberangkatan Aktif</div>
@@ -1202,6 +1300,7 @@ function showPage(id){
     }, 50);
   }
   if(id==='scan') updateInfografis();
+  if(id==='dashboard') updateChecklist();
   if(id==='transit'){
     renderTransitList();
     updateTrStats();
@@ -1838,6 +1937,9 @@ function applyRole(role){
   // Label "Upload File Manifes" - hanya Admin
   const uploadLabel = document.querySelector('#load-from-sheets-box .slabel:last-of-type');
 
+  // Update checklist untuk admin
+  if(isAdmin) setTimeout(updateChecklist, 200);
+
   // Auto-load manifes dan mulai refresh status untuk petugas
   if(!isAdmin){
     autoInitPetugas().then(()=>{
@@ -2187,9 +2289,37 @@ async function sbGetScanLog(){
 async function sbUploadManifes(manifest, tipeKapal){
   if(!sb) return false;
   const sesiId = getSesiId();
+
   try{
-    // ── UPSERT: tambah penumpang baru + update yang sudah ada ──
-    // Scan log TIDAK dihapus — status boarding tetap terjaga
+    // Cek apakah ada sesi AKTIF sebelumnya di database
+    const { data: sesiLama } = await sb.from('sesi_kapal')
+      .select('sesi_id, nama_kapal, voyage')
+      .eq('status','aktif')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const sesiLamaId = sesiLama && sesiLama.length > 0 ? sesiLama[0].sesi_id : null;
+    const isSesiBaruBerbeda = sesiLamaId && sesiLamaId !== sesiId;
+
+    if(isSesiBaruBerbeda){
+      // ── SESI BARU: arsip scan_log lama lalu hapus ──
+      console.log('[SB] Sesi baru terdeteksi, arsip sesi lama:', sesiLamaId);
+
+      // Tandai sesi lama sebagai arsip
+      await sb.from('sesi_kapal')
+        .update({ status: 'arsip' })
+        .eq('sesi_id', sesiLamaId);
+
+      // Hapus scan_log sesi lama (sudah terarsip di sesi_kapal)
+      await sb.from('scan_log').delete().eq('sesi_id', sesiLamaId);
+
+      // Hapus manifes sesi lama
+      await sb.from('manifes').delete().eq('sesi_id', sesiLamaId);
+
+      console.log('[SB] Sesi lama diarsip & dibersihkan');
+    }
+
+    // ── UPSERT manifes sesi baru ──
     const rows = manifest.map(p => ({
       sesi_id     : sesiId,
       no_tiket    : (p['No Tiket']||p.NO_TIKET||'').toString().trim(),
@@ -2208,35 +2338,27 @@ async function sbUploadManifes(manifest, tipeKapal){
       status      : p._status||'pending',
     })).filter(r => r.no_tiket !== '');
 
-    // Ambil tiket yang sudah ada di database untuk sesi ini
+    // Cek penumpang yang sudah ada (untuk upsert)
     const { data: existing } = await sb
-      .from('manifes')
-      .select('no_tiket')
-      .eq('sesi_id', sesiId);
-
+      .from('manifes').select('no_tiket').eq('sesi_id', sesiId);
     const existingSet = new Set((existing||[]).map(r => r.no_tiket));
 
-    // Pisahkan: yang baru vs yang sudah ada
     const toInsert = rows.filter(r => !existingSet.has(r.no_tiket));
     const toUpdate = rows.filter(r =>  existingSet.has(r.no_tiket));
 
     let insertCount = 0, updateCount = 0;
 
-    // Insert penumpang baru - batch 50
     for(let i=0; i<toInsert.length; i+=50){
-      const batch = toInsert.slice(i, i+50);
-      const { error } = await sb.from('manifes').insert(batch);
+      const { error } = await sb.from('manifes').insert(toInsert.slice(i,i+50));
       if(error) throw error;
-      insertCount += batch.length;
+      insertCount += Math.min(50, toInsert.length-i);
     }
 
-    // Update penumpang yang sudah ada (data berubah) - batch 50
     for(let i=0; i<toUpdate.length; i+=50){
-      const batch = toUpdate.slice(i, i+50);
       const { error } = await sb.from('manifes')
-        .upsert(batch, { onConflict: 'sesi_id,no_tiket' });
+        .upsert(toUpdate.slice(i,i+50), { onConflict: 'sesi_id,no_tiket' });
       if(error) throw error;
-      updateCount += batch.length;
+      updateCount += Math.min(50, toUpdate.length-i);
     }
 
     // Catat/update sesi kapal
@@ -2248,8 +2370,8 @@ async function sbUploadManifes(manifest, tipeKapal){
       status     : 'aktif',
     }, { onConflict: 'sesi_id' });
 
-    console.log(`[SB] Upload selesai: ${insertCount} baru, ${updateCount} diupdate`);
-    return { ok: true, insertCount, updateCount };
+    console.log(`[SB] Upload selesai: ${insertCount} baru, ${updateCount} diperbarui`);
+    return { ok: true, insertCount, updateCount, isSesiBaruBerbeda };
 
   }catch(e){
     console.error('[SB] uploadManifes error:', e.message);
@@ -2459,6 +2581,7 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
   if(mSummary) mSummary.style.display = 'block';
   if(mTable)   mTable.style.display   = 'block';
   updateDashCounters();
+  updateChecklist();
 }
 
 
@@ -2581,6 +2704,71 @@ function renderLogFromCache(){
   }).join('');
 }
 
+
+// ══════════════════════════════════════
+// CHECKLIST SESI BARU
+// ══════════════════════════════════════
+function updateChecklist(){
+  // Hanya tampil untuk admin
+  const box    = document.getElementById('checklist-sesi');
+  const banner = document.getElementById('checklist-done-banner');
+  if(!box || !banner) return;
+  if(currentRole !== 'admin'){ box.style.display='none'; banner.style.display='none'; return; }
+
+  const hasShip     = !!(S.ship.name && S.ship.name.trim() && S.ship.name !== 'Atur Kapal');
+  const hasVoyage   = !!(S.ship.voyage && S.ship.voyage.trim());
+  const hasManifes  = S.manifest.length > 0;
+  const allDone     = hasShip && hasVoyage && hasManifes;
+
+  // Sembunyikan checklist jika semua sudah selesai
+  if(allDone){
+    box.style.display    = 'none';
+    banner.style.display = 'block';
+    return;
+  }
+
+  box.style.display    = 'block';
+  banner.style.display = 'none';
+
+  // Step 1 — Atur Info Kapal
+  const step1 = document.getElementById('cl-step-1');
+  if(step1){
+    if(hasShip && hasVoyage){
+      step1.className = 'cl-item done';
+      step1.querySelector('.cl-action').outerHTML = '<span class="cl-done-icon">✅</span>';
+    } else {
+      step1.className = 'cl-item active';
+    }
+  }
+
+  // Step 2 — Upload Manifes
+  const step2 = document.getElementById('cl-step-2');
+  if(step2){
+    if(hasManifes){
+      step2.className = 'cl-item done';
+      const action = step2.querySelector('.cl-action');
+      if(action) action.outerHTML = '<span class="cl-done-icon">✅</span>';
+    } else if(hasShip && hasVoyage){
+      step2.className = 'cl-item active';
+    } else {
+      step2.className = 'cl-item pending';
+    }
+  }
+
+  // Step 3 — Verifikasi
+  const step3 = document.getElementById('cl-step-3');
+  const icon3 = document.getElementById('cl-step-3-icon');
+  if(step3){
+    if(hasManifes){
+      step3.className = 'cl-item done';
+      if(icon3) icon3.textContent = `✅ ${S.manifest.length} penumpang`;
+    } else {
+      step3.className = 'cl-item pending';
+      if(icon3) icon3.textContent = '⏳';
+    }
+  }
+}
+
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
 
 // Simpan tiket terakhir yang di-scan untuk tombol catat lanjutan
@@ -2671,15 +2859,18 @@ async function handleUpload(e){
         showToast('⏳ Menyimpan ke database Supabase...','warning');
         const result = await sbUploadManifes(S.manifest, S.shipType);
         if(result){
-          const info = result.insertCount > 0
-            ? `✅ ${result.insertCount} penumpang baru ditambahkan · ${result.updateCount} diperbarui`
-            : `✅ ${result.updateCount} data penumpang diperbarui`;
-          showToast(info,'success');
-          // Reset scan log lokal HANYA jika ini sesi baru (tidak ada scan sebelumnya)
-          if(S.scanLog.length === 0){
-            S.dupAlerts=[];
+          let info;
+          if(result.isSesiBaruBerbeda){
+            info = `✅ Sesi baru · Scan log lama diarsip · ${result.insertCount} penumpang dimuat`;
+            // Reset lokal untuk sesi baru
+            S.scanLog=[]; S.dupAlerts=[];
             S.manifest.forEach(p=>{ p._status='pending'; });
+          } else if(result.insertCount > 0){
+            info = `✅ ${result.insertCount} penumpang baru ditambahkan · ${result.updateCount} diperbarui`;
+          } else {
+            info = `✅ ${result.updateCount} data penumpang diperbarui`;
           }
+          showToast(info,'success');
           saveState(); updateDashCounters(); renderLog();
         } else {
           showToast('⚠️ File berhasil dibaca tapi gagal simpan ke database','warning');
@@ -2839,14 +3030,17 @@ async function parsePDF(file){
       showToast('⏳ Menyimpan ke database...','warning');
       sbUploadManifes(S.manifest, 'penumpang').then(result=>{
         if(result){
-          const info = result.insertCount > 0
-            ? `✅ ${result.insertCount} penumpang baru · ${result.updateCount} diperbarui`
-            : `✅ ${result.updateCount} data penumpang diperbarui`;
-          showToast(info,'success');
-          if(S.scanLog.length === 0){
-            S.dupAlerts=[];
+          let info;
+          if(result.isSesiBaruBerbeda){
+            info = `✅ Sesi baru · Scan log lama diarsip · ${result.insertCount} penumpang dimuat`;
+            S.scanLog=[]; S.dupAlerts=[];
             S.manifest.forEach(p=>{ p._status='pending'; });
+          } else if(result.insertCount > 0){
+            info = `✅ ${result.insertCount} penumpang baru · ${result.updateCount} diperbarui`;
+          } else {
+            info = `✅ ${result.updateCount} data penumpang diperbarui`;
           }
+          showToast(info,'success');
           saveState(); updateDashCounters(); renderLog();
         } else {
           showToast('⚠️ PDF dibaca tapi gagal simpan ke database','warning');
@@ -3466,6 +3660,7 @@ function saveShip(){
   document.getElementById('ship-label').textContent=S.ship.name||'Atur Kapal';
   saveState(); closeModal('modal-ship'); updateDashboard();
   showToast('✅ Info kapal disimpan','success');
+  updateChecklist();
 }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-bg').forEach(m=>
