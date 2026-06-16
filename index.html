@@ -4145,10 +4145,18 @@ function exportLog(){
 // ══════════════════════════════════════════
 function openModal(id){
   if(id==='modal-ship'){
-    document.getElementById('inp-ship-name').value=S.ship.name;
-    document.getElementById('inp-ship-route').value=S.ship.route;
-    document.getElementById('inp-ship-voyage').value=S.ship.voyage;
-    document.getElementById('inp-ship-time').value=S.ship.time;
+    // Multi-sesi: selalu kosong untuk tambah kapal baru
+    document.getElementById('inp-ship-name').value    = '';
+    document.getElementById('inp-ship-route').value   = '';
+    document.getElementById('inp-ship-voyage').value  = '';
+    document.getElementById('inp-ship-time').value    = '';
+    const dermEl = document.getElementById('inp-ship-dermaga');
+    if(dermEl) dermEl.value = '';
+    const typeEl = document.getElementById('inp-ship-type');
+    if(typeEl) typeEl.value = 'perintis';
+    // Update judul modal
+    const titleEl = document.getElementById('modal-ship-title');
+    if(titleEl) titleEl.textContent = '🚢 Tambah Kapal Baru';
   }
   document.getElementById(id).classList.add('open');
 }
