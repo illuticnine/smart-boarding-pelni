@@ -1030,41 +1030,32 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
 <div class="page" id="page-dashboard">
 
-  <!-- TOMBOL TAMBAH KAPAL (Admin only) -->
-  <div id="btn-tambah-kapal-wrap" style="display:none;margin-bottom:12px">
-    <button class="btn btn-primary" style="width:100%;padding:14px;font-size:14px;font-weight:700"
-            onclick="openModal('modal-ship')">
-      ➕ Tambah Kapal Baru
-    </button>
-  </div>
+  <!-- id legacy tersembunyi -->
+  <span id="dash-ship" style="display:none"></span>
+  <span id="dash-route" style="display:none"></span>
+  <span id="dash-time" style="display:none"></span>
+  <span id="dash-type" style="display:none"></span>
+  <span id="live-clock" style="display:none"></span>
 
-  <!-- DAFTAR KAPAL AKTIF (Admin) -->
-  <div id="dashboard-kapal-list" style="display:none"></div>
-
-  <!-- CHECKLIST SESI BARU — hanya tampil untuk Admin jika belum siap -->
+  <!-- CHECKLIST / BANNER SIAP -->
   <div id="checklist-sesi">
-    <div class="cl-title">
-      <span>📋</span> Panduan Memulai Sesi Baru
-    </div>
-
+    <div class="cl-title"><span>📋</span> Panduan Memulai Sesi Baru</div>
     <div class="cl-item" id="cl-step-1">
       <div class="cl-num">1</div>
       <div>
-        <div>Atur Info Kapal</div>
-        <div style="font-size:11px;font-weight:400;color:var(--gray-500)">Nama kapal, voyage, rute & jam berangkat</div>
+        <div>Tambah Kapal</div>
+        <div style="font-size:11px;font-weight:400;color:var(--gray-500)">Nama, voyage, tipe & dermaga</div>
       </div>
-      <span class="cl-action" onclick="openModal('modal-ship')">Atur →</span>
+      <span class="cl-action" onclick="showPage('manifest')">Mulai →</span>
     </div>
-
     <div class="cl-item pending" id="cl-step-2">
       <div class="cl-num">2</div>
       <div>
         <div>Upload Manifes</div>
-        <div style="font-size:11px;font-weight:400;color:var(--gray-500)">File Excel PPSS atau PDF tiket penumpang</div>
+        <div style="font-size:11px;font-weight:400;color:var(--gray-500)">File Excel PPSS atau PDF tiket</div>
       </div>
       <span class="cl-action" onclick="showPage('manifest')">Upload →</span>
     </div>
-
     <div class="cl-item pending" id="cl-step-3">
       <div class="cl-num">3</div>
       <div>
@@ -1073,41 +1064,21 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       </div>
       <span class="cl-done-icon" id="cl-step-3-icon">⏳</span>
     </div>
-
-    <div style="font-size:11px;color:#E65100;margin-top:10px;padding:8px;
-                background:rgba(255,152,0,.1);border-radius:8px;line-height:1.7">
-      ⚠️ <b>Penting:</b> Selalu atur info kapal <b>sebelum</b> upload manifes agar sesi baru terdeteksi dengan benar.
-    </div>
   </div>
-
-  <!-- BANNER SIAP — tampil saat semua langkah selesai -->
   <div id="checklist-done-banner">
     ✅ Sesi Boarding Siap — Petugas Dapat Login
   </div>
 
-  <!-- id legacy dipertahankan agar tidak crash JS yang masih referensi elemen ini -->
-  <span id="dash-ship" style="display:none"></span>
-  <span id="dash-route" style="display:none"></span>
-  <span id="dash-time" style="display:none"></span>
-  <span id="dash-type" style="display:none"></span>
-  <span id="live-clock" style="display:none"></span>
-
-  <!-- Tombol refresh dan status sync - hanya tampil untuk Admin -->
+  <!-- REFRESH BAR -->
   <div id="dash-admin-bar" style="display:none;margin-bottom:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:10px 14px;background:#E3F2FD;border-radius:10px;gap:10px">
       <div style="flex:1">
-        <div style="font-size:12px;font-weight:700;color:#1565C0">
-          📊 Data Real-Time dari Supabase
-        </div>
-        <div id="dash-last-sync" style="font-size:10px;color:#1976D2;margin-top:2px">
-          Belum disinkronkan
-        </div>
-        <div id="dash-countdown" style="font-size:10px;color:#42A5F5;margin-top:1px">
-          Refresh otomatis dalam 30 detik
-        </div>
+        <div style="font-size:12px;font-weight:700;color:#1565C0">📊 Data Real-Time dari Supabase</div>
+        <div id="dash-last-sync" style="font-size:10px;color:#1976D2;margin-top:2px">Belum disinkronkan</div>
+        <div id="dash-countdown" style="font-size:10px;color:#42A5F5;margin-top:1px">Auto-refresh dalam 30 detik</div>
       </div>
-      <button onclick="refreshDashboardFromSheets();updateCountdownTick()"
+      <button onclick="refreshDashboardFromSheets()"
               id="btn-dash-refresh"
               style="background:#1565C0;color:#fff;border:none;padding:8px 14px;
                      border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;
@@ -1117,44 +1088,131 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     </div>
   </div>
 
-  <div class="stats-grid">
-    <div class="stat-card sc-blue"><div class="stat-num" id="d-total">0</div><div class="stat-label">Total Pnp</div></div>
-    <div class="stat-card sc-green"><div class="stat-num" id="d-naik">0</div><div class="stat-label">Sudah Naik</div></div>
-    <div class="stat-card sc-red"><div class="stat-num" id="d-dup">0</div><div class="stat-label">Alert Duplikat</div></div>
-    <div class="stat-card sc-amber"><div class="stat-num" id="d-f1">0</div><div class="stat-label">Lewat F1</div></div>
+  <!-- TOMBOL TAMBAH KAPAL -->
+  <div id="btn-tambah-kapal-wrap" style="display:none;margin-bottom:12px">
+    <button class="btn btn-primary" style="width:100%;padding:13px;font-size:14px;font-weight:700"
+            onclick="showPage('manifest')">
+      ➕ Tambah Kapal / Upload Manifes
+    </button>
   </div>
 
+  <!-- DAFTAR KAPAL AKTIF — card per kapal dengan stats masing-masing -->
+  <div id="dashboard-kapal-list" style="display:none"></div>
+
+  <!-- COUNTER GABUNGAN SEMUA KAPAL -->
+  <div id="dash-gabungan" style="display:none">
+    <div class="card">
+      <div class="card-title">
+        <div class="cticon" style="background:#E8EAF6">📊</div>
+        Ringkasan Semua Kapal
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card sc-blue">
+          <div class="stat-num" id="d-total">0</div>
+          <div class="stat-label">Total Pnp</div>
+        </div>
+        <div class="stat-card sc-green">
+          <div class="stat-num" id="d-naik">0</div>
+          <div class="stat-label">Naik Kapal</div>
+        </div>
+        <div class="stat-card sc-amber">
+          <div class="stat-num" id="d-f1">0</div>
+          <div class="stat-label">Lewat F1</div>
+        </div>
+        <div class="stat-card sc-red">
+          <div class="stat-num" id="d-dup">0</div>
+          <div class="stat-label">Duplikat</div>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;
+                    font-size:12px;color:var(--gray-600);margin-bottom:5px">
+          <span>Progress total embarkasi</span>
+          <span id="prog-pct" style="font-weight:700;color:var(--blue)">0%</span>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog" id="prog-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COUNTER PETUGAS (single kapal) -->
+  <div id="dash-petugas" style="display:none">
+    <div class="stats-grid">
+      <div class="stat-card sc-blue">
+        <div class="stat-num" id="d-total-p">0</div>
+        <div class="stat-label">Total Pnp</div>
+      </div>
+      <div class="stat-card sc-green">
+        <div class="stat-num" id="d-naik-p">0</div>
+        <div class="stat-label">Naik Kapal</div>
+      </div>
+      <div class="stat-card sc-amber">
+        <div class="stat-num" id="d-f1-p">0</div>
+        <div class="stat-label">Lewat F1</div>
+      </div>
+      <div class="stat-card sc-red">
+        <div class="stat-num" id="d-dup-p">0</div>
+        <div class="stat-label">Duplikat</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div class="cticon" style="background:#E8F5E9">📈</div>Progress Embarkasi
+      </div>
+      <div style="display:flex;justify-content:space-between;
+                  font-size:12px;color:var(--gray-600);margin-bottom:5px">
+        <span>Penumpang naik ke kapal</span>
+        <span id="prog-pct-p" style="font-weight:700;color:var(--blue)">0%</span>
+      </div>
+      <div class="prog-wrap">
+        <div class="prog" id="prog-bar-p" style="width:0%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;
+                  font-size:11px;color:var(--gray-400);margin-top:5px">
+        <span id="d-f1-label">Filter 1: 0</span>
+        <span id="d-f2">Filter 2: 0</span>
+      </div>
+    </div>
+    <!-- Breakdown kategori perintis -->
+    <div class="card" id="dash-kategori" style="display:none">
+      <div class="card-title">
+        <div class="cticon" style="background:#E0F2F1">👥</div>Breakdown Kategori
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-card sc-blue">
+          <div class="stat-num" id="d-dws">0</div>
+          <div class="stat-label">Dewasa</div>
+        </div>
+        <div class="stat-card sc-teal">
+          <div class="stat-num" id="d-anak">0</div>
+          <div class="stat-label">Anak</div>
+        </div>
+        <div class="stat-card sc-purple">
+          <div class="stat-num" id="d-bayi">0</div>
+          <div class="stat-label">Bayi</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALERTS -->
   <div class="card">
-    <div class="card-title"><div class="cticon" style="background:#E8F5E9">📈</div>Progress Embarkasi</div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray-600);margin-bottom:5px">
-      <span>Penumpang naik ke kapal</span>
-      <span id="prog-pct" style="font-weight:700;color:var(--blue)">0%</span>
+    <div class="card-title">
+      <div class="cticon" style="background:#FFEBEE">🚨</div>Alert Duplikat Terakhir
     </div>
-    <div class="prog-wrap"><div class="prog" id="prog-bar" style="width:0%"></div></div>
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-400);margin-top:5px">
-      <span id="d-f1">Filter 1: 0 scan valid</span>
-      <span id="d-f2">Filter 2: 0 scan valid</span>
-    </div>
-  </div>
-
-  <!-- Kategori breakdown (perintis) -->
-  <div class="card" id="dash-kategori" style="display:none">
-    <div class="card-title"><div class="cticon" style="background:#E0F2F1">👥</div>Breakdown Kategori</div>
-    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
-      <div class="stat-card sc-blue"><div class="stat-num" id="d-dws">0</div><div class="stat-label">Dewasa</div></div>
-      <div class="stat-card sc-teal"><div class="stat-num" id="d-anak">0</div><div class="stat-label">Anak</div></div>
-      <div class="stat-card sc-purple"><div class="stat-num" id="d-bayi">0</div><div class="stat-label">Bayi</div></div>
-    </div>
-  </div>
-
-  <!-- Alerts -->
-  <div class="card">
-    <div class="card-title"><div class="cticon" style="background:#FFEBEE">🚨</div>Alert Duplikat Terakhir</div>
     <div id="alert-list">
-      <div class="empty"><div class="empty-icon">✅</div><div class="empty-title">Tidak ada alert</div></div>
+      <div class="empty">
+        <div class="empty-icon">✅</div>
+        <div class="empty-title">Tidak ada alert</div>
+      </div>
     </div>
   </div>
+
 </div>
+
+
 
 <!-- ═══════════════════ TRANSIT PAGE ═══════════════════ -->
 <div class="page" id="page-transit">
@@ -3453,12 +3511,30 @@ async function renderDashboardMultiKapal(){
     const scans  = scanData || [];
     const f1     = scans.filter(r=>r.pos==='F1'&&r.status==='OK').length;
     const naik   = scans.filter(r=>r.status==='NAIK').length;
+    const dup    = scans.filter(r=>r.status==='DUPLIKAT').length;
     const total  = kapal.total_manifes || 0;
     const sisa   = Math.max(0, total - naik);
     const pct    = total > 0 ? Math.round(naik/total*100) : 0;
 
-    return { kapal, f1, naik, sisa, total, pct };
+    return { kapal, f1, naik, sisa, total, pct, dup };
   }));
+
+  // Hitung total gabungan semua kapal
+  const totalGab = cards.reduce((s,d)=>s+d.total, 0);
+  const naikGab  = cards.reduce((s,d)=>s+d.naik, 0);
+  const f1Gab    = cards.reduce((s,d)=>s+d.f1, 0);
+  const dupGab   = cards.reduce((s,d)=>s+(d.dup||0), 0);
+  const pctGab   = totalGab > 0 ? Math.round(naikGab/totalGab*100) : 0;
+  const se = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  se('d-total', totalGab);
+  se('d-naik',  naikGab);
+  se('d-f1',    f1Gab);
+  se('d-dup',   dupGab);
+  se('prog-pct', pctGab+'%');
+  const pb = document.getElementById('prog-bar');
+  if(pb) pb.style.width = pctGab+'%';
+  const gabEl = document.getElementById('dash-gabungan');
+  if(gabEl) gabEl.style.display = cards.length > 0 ? 'block' : 'none';
 
   container.innerHTML = cards.map(({kapal, f1, naik, sisa, total, pct}) => `
     <div style="background:linear-gradient(135deg,#0A2342,#1565C0);border-radius:14px;
@@ -4464,42 +4540,48 @@ function clearManifest(){
 // DASHBOARD
 // ══════════════════════════════════════════
 function updateDashCounters(){
-  const total=S.manifest.length;
-  const naik=S.manifest.filter(p=>p._status==='naik').length;
-  const f1=S.scanLog.filter(l=>l.pos==='F1'&&l.status==='OK').length;
-  const f2=S.scanLog.filter(l=>l.pos==='F2'&&l.status==='NAIK').length;
-  const pct=total>0?Math.round(naik/total*100):0;
-  // Helper aman — tidak crash meski elemen tidak ada (petugas tidak punya dashboard)
-  const se=(id,val,prop='textContent')=>{
-    const el=document.getElementById(id);
-    if(el) el[prop]=val;
-  };
-  se('d-total', total);
-  se('d-naik',  naik);
-  se('d-dup',   S.dupAlerts.length);
-  se('d-f1',    f1);
-  se('d-f2',    f2);
-  se('d-transit', S.transitLog.filter(t=>!t.returned).length);
-  const pb=document.getElementById('prog-bar'); if(pb) pb.style.width=pct+'%';
-  se('prog-pct',  pct+'%');
-  // Perintis breakdown
+  const se=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+
+  if(currentRole === 'admin'){
+    const gabEl = document.getElementById('dash-gabungan');
+    const petEl = document.getElementById('dash-petugas');
+    if(gabEl) gabEl.style.display = S.kapalAktif && S.kapalAktif.length > 0 ? 'block' : 'none';
+    if(petEl) petEl.style.display = 'none';
+    return; // Admin counter diisi oleh renderDashboardMultiKapal
+  }
+
+  // Petugas: dari S.manifest lokal
+  const gabEl = document.getElementById('dash-gabungan');
+  const petEl = document.getElementById('dash-petugas');
+  if(gabEl) gabEl.style.display = 'none';
+  if(petEl) petEl.style.display = 'block';
+
+  const total = S.manifest.length;
+  const naik  = S.manifest.filter(p=>p._status==='naik').length;
+  const f1    = S.scanLog.filter(l=>l.pos==='F1'&&l.status==='OK').length;
+  const f2    = S.scanLog.filter(l=>l.pos==='F2'&&l.status==='NAIK').length;
+  const pct   = total>0 ? Math.round(naik/total*100) : 0;
+
+  se('d-total-p', total);
+  se('d-naik-p',  naik);
+  se('d-dup-p',   S.dupAlerts.length);
+  se('d-f1-p',    f1);
+  se('d-f1-label','Filter 1: '+f1+' scan');
+  se('d-f2',      'Filter 2: '+f2+' naik');
+
+  const pbp = document.getElementById('prog-bar-p');
+  if(pbp) pbp.style.width = pct+'%';
+  se('prog-pct-p', pct+'%');
+
   const normK = p=>(p.Kategori||p['Kategori']||p.KATEGORI||'').toString().toUpperCase().trim();
   const dws =S.manifest.filter(p=>{const k=normK(p);return k==='DWS'||k==='DEWASA'||k==='D';}).length;
   const anak=S.manifest.filter(p=>{const k=normK(p);return k==='ANAK'||k==='ANK'||k==='A';}).length;
   const bayi=S.manifest.filter(p=>{const k=normK(p);return k==='BAYI'||k==='BY'||k==='B';}).length;
-  se('d-dws',  dws);
-  se('d-anak', anak);
-  se('d-bayi', bayi);
-  // Info kapal
-  // Multi-sesi: info kapal dari kapalAktif
-  const kapalInfo = S.kapalAktif.length > 0
-    ? S.kapalAktif.map(k=>k.nama_kapal).join(' · ')
-    : (S.ship.name||'Belum Diatur');
-  se('dash-ship', kapalInfo);
-  se('dash-route', S.ship.route||'—');
-  se('dash-time',  S.ship.time||'—');
-  se('dash-type',  S.shipType==='perintis'?'Kapal Perintis':'Kapal Penumpang');
+  se('d-dws', dws); se('d-anak', anak); se('d-bayi', bayi);
+  const katEl = document.getElementById('dash-kategori');
+  if(katEl) katEl.style.display = S.shipType==='perintis' ? 'block' : 'none';
 }
+
 
 function updateDashboard(){
   updateDashCounters();
