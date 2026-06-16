@@ -1307,8 +1307,11 @@ function setShipType(t){
     document.getElementById('format-perintis').style.display = t==='perintis'?'block':'none';
     document.getElementById('format-penumpang').style.display = t==='penumpang'?'block':'none';
   }
-  document.getElementById('tbl-perintis-wrap').style.display = t==='perintis'?'block':'none';
-  document.getElementById('tbl-penumpang-wrap').style.display = t==='penumpang'?'block':'none';
+  // Hanya tampilkan tabel yang sesuai tipe - tidak pernah keduanya sekaligus
+  const tblPerintis  = document.getElementById('tbl-perintis-wrap');
+  const tblPenumpang = document.getElementById('tbl-penumpang-wrap');
+  if(tblPerintis)  tblPerintis.style.display  = t==='perintis'  ? 'block' : 'none';
+  if(tblPenumpang) tblPenumpang.style.display = t==='penumpang' ? 'block' : 'none';
   document.getElementById('dash-kategori').style.display = t==='perintis'?'block':'none';
   const dt=document.getElementById('dash-type'); if(dt) dt.textContent = t==='perintis'?'Perintis':'Penumpang';
   // Update file input: penumpang mendukung PDF juga
@@ -2012,8 +2015,9 @@ function applyRole(role){
   if(shipBtn) shipBtn.style.display = role==='admin' ? '' : 'none';
 
   // Sembunyikan ship type switcher untuk petugas
+  // Type switcher selalu tersembunyi — tipe ditentukan saat modal Tambah Kapal
   const switcher = document.querySelector('.ship-type-switcher');
-  if(switcher) switcher.style.display = role==='admin' ? '' : 'none';
+  if(switcher) switcher.style.display = 'none';
 
   // Set pos otomatis untuk petugas F1/F2
   if(info.pos){
@@ -3325,12 +3329,21 @@ async function handleUpload(e){
   if(uploadIcon)  uploadIcon.textContent  = isPDF ? '📄' : '📊';
   if(uploadLabel) uploadLabel.textContent = file.name;
 
+  // Tipe kapal sudah terkunci dari modal Tambah Kapal
+  const tipeAktif = S.shipType || 'perintis';
+
   if(isPDF){
-    if(S.shipType !== 'penumpang'){
-      showToast('PDF hanya untuk Kapal Penumpang. Ganti tipe kapal terlebih dahulu.','error');
+    if(tipeAktif !== 'penumpang'){
+      showToast('❌ File PDF hanya untuk Kapal Penumpang · Pilih tipe yang benar saat Tambah Kapal','error');
       return;
     }
     parsePDF(file);
+    return;
+  }
+
+  // Validasi: Excel hanya untuk Perintis
+  if(tipeAktif === 'penumpang'){
+    showToast('❌ Kapal Penumpang membutuhkan file PDF · Pilih tipe yang benar saat Tambah Kapal','error');
     return;
   }
 
