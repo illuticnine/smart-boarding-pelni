@@ -3491,11 +3491,15 @@ async function _lanjutSesiOtomatis(sesiList){
   showToast('⏳ Memuat data sesi aktif...','warning');
   try{
     const manifes = await sbGetManifes();
-    S.manifest = manifes;
-    S.manifestPage = 1;
-    saveState();
+    // Pakai applyManifesToState agar UI ikut terupdate
+    applyManifesToState({
+      manifest   : manifes,
+      tipeKapal  : k.tipe_kapal || 'perintis',
+      namaKapal  : k.nama_kapal,
+    });
   }catch(e){
     console.warn('[SB] Gagal load manifes saat login:', e.message);
+    showToast('⚠️ Sesi ditemukan tapi gagal muat manifes: '+e.message,'warning');
   }
 
   await syncStatusFromSupabase(true);
@@ -3505,7 +3509,7 @@ async function _lanjutSesiOtomatis(sesiList){
   updateChecklist();
   updateShipLabel();
   showToast('✅ Sesi dilanjutkan · '+k.nama_kapal+' · '+
-            (S.manifest.length)+' penumpang','success');
+            S.manifest.length+' penumpang','success');
 }
 
 // Render dashboard multi-kapal
