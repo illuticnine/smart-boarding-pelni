@@ -1179,7 +1179,7 @@ function showPage(id){
     // Admin: tampilkan bar refresh dan auto-refresh dari Sheets
     const adminBar = document.getElementById('dash-admin-bar');
     if(adminBar) adminBar.style.display = (currentRole==='admin') ? 'block' : 'none';
-    if(currentRole==='admin' && (GS_APPS_SCRIPT_URL||S.gs.url)){
+    if(currentRole==='admin' && sb){
       refreshDashboardFromSheets();
       startDashAutoRefresh();
     }
@@ -1189,12 +1189,12 @@ function showPage(id){
   }
   if(id==='log') renderLog();
   if(id==='manifest'){
-    // Delay kecil memastikan DOM sudah siap setelah role diterapkan
     setTimeout(()=>{
       renderManifestTable();
       refreshLoadSheetsBtn();
       updateManifesStatusUI();
-      updateManifesStatusUI();
+      // Sync status terbaru dari Supabase (untuk semua role)
+      syncStatusFromSupabase(true);
     }, 50);
   }
   if(id==='scan') updateInfografis();
@@ -1516,51 +1516,18 @@ async function autoLoadManifes(banner){
   btn.disabled = true;
 
   try{
-    const url = S.gs.url + '?action=getManifes&t='+Date.now();
-    const res = await fetch(url);
-    const data = await res.json();
-
-    if(!data.ok || !data.rows || data.rows.length < 2)
-      throw new Error(data.msg || 'Data manifes kosong');
-
-    const rows = data.rows;
-    const headers = rows[0].map(h=>String(h).trim());
-    const dataRows = rows.slice(1).filter(r=>r.some(c=>c!==''));
-    const manifest = dataRows.map(row=>{
-      const obj={};
-      headers.forEach((h,i)=>{ obj[h]=row[i]||''; });
-      return obj;
-    }).filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
-
-    if(!manifest.length) throw new Error('Tidak ada data penumpang');
-
-    const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
-    const tipeKapal = (headers.includes('Kategori')||headers.includes('KATEGORI')) ? 'perintis' : 'penumpang';
-
-    S.manifest = manifest;
-    S.shipType = tipeKapal;
-    if(namaKapal){ S.ship.name=namaKapal; document.getElementById('ship-label').textContent=namaKapal; }
-    saveState();
-    setShipType(tipeKapal);
-    updateManifestSummary();
-    renderManifestTable();
-    document.getElementById('manifest-summary').style.display='block';
-    document.getElementById('manifest-table-card').style.display='block';
-    updateDashCounters();
-
-    // Ubah banner jadi sukses lalu hilang
-    banner.style.background = '#2E7D32';
-    banner.innerHTML = `
+    const result = await fetchManifesFromGS();
+    applyManifesToState(result);
+    banner.style.background='#2E7D32';
+    banner.innerHTML=`
       <span style="font-size:18px">✅</span>
       <div style="flex:1">
-        <div style="font-weight:700">${manifest.length} penumpang berhasil dimuat</div>
-        <div style="font-size:11px;opacity:.85">${namaKapal} · Siap scan</div>
-      </div>
-    `;
-    setTimeout(()=>{ banner.remove(); }, 3000);
-    showToast(`✅ ${manifest.length} penumpang siap di-boarding`,'success');
-
-  }catch(err){
+        <div style="font-weight:700">${result.manifest.length} penumpang berhasil dimuat</div>
+        <div style="font-size:11px;opacity:.85">${result.namaKapal||'—'} · Siap scan</div>
+      </div>`;
+    setTimeout(()=>{ try{ banner.remove(); }catch(e){} }, 3000);
+    showToast(`✅ ${result.manifest.length} penumpang siap di-boarding`,'success');
+    }catch(err){
     banner.style.background = '#B71C1C';
     banner.innerHTML = `
       <span style="font-size:18px">❌</span>
@@ -1650,101 +1617,54 @@ async function perbaruiManifes(){
     }
   }
 
-  // Tampilkan progress bar
   const progress      = document.getElementById('manifes-progress');
   const progressBar   = document.getElementById('manifes-progress-bar');
   const progressLabel = document.getElementById('manifes-progress-label');
   const btnPerbarui   = document.getElementById('btn-perbarui');
   const btnSummary    = document.getElementById('btn-summary-perbarui');
 
-  if(progress)      progress.style.display = 'block';
-  if(btnPerbarui)   { btnPerbarui.disabled=true; btnPerbarui.textContent='⏳ Memperbarui...'; }
-  if(btnSummary)    { btnSummary.disabled=true; btnSummary.textContent='⏳ Memperbarui...'; }
+  if(progress)    progress.style.display = 'block';
+  if(btnPerbarui) { btnPerbarui.disabled=true; btnPerbarui.textContent='⏳ Memperbarui...'; }
+  if(btnSummary)  { btnSummary.disabled=true;  btnSummary.textContent='⏳ Memperbarui...'; }
 
-  // Animasi progress bar
   let pct = 10;
   const ticker = setInterval(()=>{
     pct = Math.min(pct + 8, 85);
-    if(progressBar) progressBar.style.width = pct + '%';
+    if(progressBar)   progressBar.style.width = pct + '%';
     if(pct < 30 && progressLabel) progressLabel.textContent = 'Menghubungi database...';
     else if(pct < 60 && progressLabel) progressLabel.textContent = 'Mengunduh data manifes...';
     else if(progressLabel) progressLabel.textContent = 'Memproses data penumpang...';
   }, 300);
 
   try{
-    const url = S.gs.url + '?action=getManifes&t='+Date.now();
-    const res = await fetch(url);
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const data = await res.json();
-
-    if(!data.ok || !data.rows || data.rows.length < 2)
-      throw new Error(data.msg || 'Data manifes di Sheets kosong');
-
-    const rows    = data.rows;
-    const headers = rows[0].map(h=>String(h).trim());
-
-    // Deteksi tipe kapal
-    const isPerintis = headers.some(h=>['Nama Pnp','Kategori','Tgl Etd','No Tiket'].includes(h));
-    const tipeKapal  = isPerintis ? 'perintis' : 'penumpang';
-    const hasTicket  = headers.some(h=>['No Tiket','NO_TIKET'].includes(h));
-    if(!hasTicket) throw new Error('Format manifes tidak dikenali · Pastikan Admin sudah upload manifes terbaru');
-
-    const manifest = rows.slice(1)
-      .filter(r=>r.some(c=>c!==''))
-      .map(row=>{ const o={}; headers.forEach((h,i)=>o[h]=row[i]||''); return o; })
-      .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
-
-    if(!manifest.length) throw new Error('Tidak ada data penumpang yang valid');
-
-    const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
-
-    // Cek apakah ada perubahan
     const prevCount = S.manifest.length;
-    const newCount  = manifest.length;
-    const isDiff    = newCount !== prevCount;
+    const result    = await fetchManifesFromGS();  // → Supabase
+    const newCount  = result.manifest.length;
+    applyManifesToState(result);
+    // Sync status terbaru dari scan_log
+    await syncStatusFromSupabase(true);
 
-    S.manifest  = manifest;
-    S.shipType  = tipeKapal;
-    if(namaKapal){
-      S.ship.name = namaKapal;
-      const lbl = document.getElementById('ship-label');
-      if(lbl) lbl.textContent = namaKapal;
-    }
-    setManifesLoadTime();  // simpan timestamp
-    saveState();
-    setShipType(tipeKapal);
-    updateManifestSummary();
-    renderManifestTable();
-    document.getElementById('manifest-summary').style.display='block';
-    document.getElementById('manifest-table-card').style.display='block';
-    updateDashCounters();
-
-    // Selesai — progress 100%
     clearInterval(ticker);
-    if(progressBar)   progressBar.style.width='100%';
-    if(progressLabel) progressLabel.textContent='✅ Selesai!';
-
+    if(progressBar)   progressBar.style.width = '100%';
+    if(progressLabel) progressLabel.textContent = '✅ Selesai!';
     setTimeout(()=>{
-      if(progress) progress.style.display='none';
-      if(progressBar) progressBar.style.width='0%';
+      if(progress)    progress.style.display = 'none';
+      if(progressBar) progressBar.style.width = '0%';
     }, 1500);
 
-    // Toast info perubahan
-    if(isDiff){
-      showToast(
-        `✅ Manifes diperbarui · ${newCount} penumpang (${newCount>prevCount?'+':''}${newCount-prevCount} dari sebelumnya)`,
-        'success'
-      );
+    const diff = newCount - prevCount;
+    if(newCount !== prevCount){
+      showToast(`✅ Manifes diperbarui · ${newCount} penumpang (${diff>0?'+':''}${diff} dari sebelumnya)`,'success');
     } else {
-      showToast(`✅ Manifes sudah terbaru · ${newCount} penumpang`, 'success');
+      showToast(`✅ Manifes sudah terbaru · ${newCount} penumpang`,'success');
     }
 
-  } catch(err){
+  }catch(err){
     clearInterval(ticker);
-    if(progress)      progress.style.display='none';
-    if(progressBar)   progressBar.style.width='0%';
-    showToast('❌ Gagal perbarui: '+err.message, 'error');
-  } finally {
+    if(progress)    progress.style.display = 'none';
+    if(progressBar) progressBar.style.width = '0%';
+    showToast('❌ Gagal perbarui: '+err.message,'error');
+  }finally{
     if(btnPerbarui){ btnPerbarui.disabled=false; btnPerbarui.textContent='🔄 Perbarui Data'; }
     if(btnSummary) { btnSummary.disabled=false;  btnSummary.textContent='🔄 Perbarui'; }
   }
@@ -1770,59 +1690,12 @@ async function loadManifesFromSheets(){
   status.innerHTML = '<span style="color:var(--gray-500)">Menghubungi database...</span>';
 
   try{
-    const url = S.gs.url.replace('/exec','/exec') + '?action=getManifes&t='+Date.now();
-    const res = await fetch(url);
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const data = await res.json();
-
-    if(!data.ok || !data.rows || data.rows.length < 2){
-      throw new Error('Data manifes di Sheets kosong atau belum diupload Admin');
-    }
-
-    const rows = data.rows;
-    const headers = rows[0].map(h=>String(h).trim());
-
-    // Deteksi tipe kapal — konsisten dengan header upload
-    const isPerintis = headers.some(h=>['Nama Pnp','Kategori','Tgl Etd','No Tiket'].includes(h));
-    const tipeKapal  = isPerintis ? 'perintis' : 'penumpang';
-    const hasTicket  = headers.some(h=>['No Tiket','NO_TIKET'].includes(h));
-    if(!hasTicket){
-      throw new Error('Format manifes tidak dikenali · Pastikan Admin sudah upload manifes terbaru');
-    }
-
-    // Konversi ke format objek
-    const manifest = rows.slice(1)
-      .filter(r=>r.some(c=>c!==''))
-      .map(row=>{ const obj={}; headers.forEach((h,i)=>{ obj[h]=row[i]||''; }); return obj; })
-      .filter(p=>(p['No Tiket']||p['NO_TIKET']||'').toString().trim()!=='');
-
-    if(manifest.length===0){
-      throw new Error('Tidak ada data penumpang yang valid di Sheets');
-    }
-
-    // Nama kapal dari data
-    const namaKapal = manifest[0]['Nama Kapal']||manifest[0]['NAMA_KAPAL']||'';
-
-    S.manifest = manifest;
-    S.shipType = tipeKapal;
-    if(namaKapal) S.ship.name = namaKapal;
-    setManifesLoadTime();
-    saveState();
-
-    // Update UI
-    setShipType(tipeKapal);
-    updateManifestSummary();
-    renderManifestTable();
-    document.getElementById('manifest-summary').style.display='block';
-    document.getElementById('manifest-table-card').style.display='block';
-    updateDashCounters();
-    updateManifesStatusUI();
-
-    status.innerHTML=`<span style="color:var(--green)">✅ Berhasil memuat <b>${manifest.length}</b> penumpang dari database · ${new Date().toLocaleTimeString('id-ID',{hour12:false})}</span>`;
-    btn.textContent='✅ Manifes Termuat';
-    showToast(`✅ ${manifest.length} penumpang dimuat dari Sheets`,'success');
-
-  }catch(err){
+    const result = await fetchManifesFromGS();
+    applyManifesToState(result);
+    if(status) status.innerHTML=`<span style="color:var(--green)">✅ Berhasil memuat <b>${result.manifest.length}</b> penumpang · ${new Date().toLocaleTimeString('id-ID',{hour12:false})}</span>`;
+    if(btn) btn.textContent='✅ Manifes Termuat';
+    showToast(`✅ ${result.manifest.length} penumpang dimuat dari database`,'success');
+    }catch(err){
     clearInterval(ticker);
     if(progress)    progress.style.display='none';
     if(progressBar) progressBar.style.width='0%';
@@ -1838,8 +1711,9 @@ function refreshLoadSheetsBtn(){
   const btn=document.getElementById('btn-load-sheets');
   const st=document.getElementById('load-sheets-status');
   if(!btn) return;
-  if(!S.gs.url){
-    btn.disabled=false;
+  // Aktifkan tombol jika Supabase terkonfigurasi
+  if(!sb){
+    btn.disabled=true;
     if(st) st.innerHTML='<span style="color:var(--gray-400)">💡 Konfigurasi Supabase di menu 🗄️ Database agar fitur ini aktif.</span>';
   } else {
     btn.disabled=false;
@@ -2110,23 +1984,8 @@ async function refreshDashboardFromSheets(){
     const bar = document.getElementById('progress-bar');
     if(bar) bar.style.width = pct + '%';
 
-    // Update manifest _status dari scan log Sheets
-    if(data.rows && data.rows.length > 0 && S.manifest.length > 0){
-      data.rows.forEach(log => {
-        const ticket = String(log['No Tiket']||log['Waktu']||'').trim();
-        const status = String(log['Status']||'').trim();
-        const pax = S.manifest.find(p =>
-          (p['No Tiket']||p.NO_TIKET||'').toString().trim() === ticket
-        );
-        if(pax){
-          if(status === 'NAIK') pax._status = 'naik';
-          else if(status === 'OK' && pax._status !== 'naik') pax._status = 'dermaga';
-        }
-      });
-      saveState();
-      renderManifestTable();
-    }
-
+    // Update manifest _status via fungsi terpusat
+    await syncStatusFromSupabase(true);
     const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
     if(syncEl) syncEl.textContent = `Terakhir sync: ${now} · ${data.total} entri scan`;
     showToast(`✅ Dashboard diperbarui · ${naik} penumpang naik`, 'success');
@@ -2222,59 +2081,10 @@ function stopPetugasStatusRefresh(){
 }
 
 async function refreshStatusFromSheets(){
-  // Hanya untuk petugas (bukan admin) dan hanya jika ada koneksi Sheets
-  if(currentRole === 'admin' || currentRole === null) return;
-  if(!sb || !S.manifest.length) return;
-
-  try{
-    const data = await sbGetScanStats();
-    if(!data.rows) return;
-
-    // Bangun peta status terbaik per tiket dari scan_log
-    // (ambil status tertinggi: naik > dermaga > perhatian)
-    const statusRank = { 'naik':3, 'dermaga':2, 'perhatian':1 };
-    const bestStatus = {};
-
-    data.rows.forEach(log => {
-      const ticket = String(log.no_tiket||'').trim();
-      const rawStatus = String(log.status||'').trim();
-      if(!ticket) return;
-
-      // Konversi status scan_log → status manifes
-      const manifesStatus = rawStatus==='NAIK'      ? 'naik'
-                           : rawStatus==='OK'        ? 'dermaga'
-                           : rawStatus==='PERHATIAN' ? 'perhatian'
-                           : null;
-      if(!manifesStatus) return;
-
-      const curRank = statusRank[bestStatus[ticket]] || 0;
-      const newRank = statusRank[manifesStatus] || 0;
-      if(newRank > curRank) bestStatus[ticket] = manifesStatus;
-    });
-
-    // Terapkan ke manifest
-    let changed = false;
-    Object.entries(bestStatus).forEach(([ticket, newStatus]) => {
-      const pax = S.manifest.find(p =>
-        (p['No Tiket']||p.NO_TIKET||'').toString().trim() === ticket
-      );
-      if(pax && pax._status !== newStatus){
-        pax._status = newStatus;
-        changed = true;
-      }
-    });
-    if(changed){
-      saveState();
-      renderManifestTable();
-      updateDashCounters();
-      updateInfografis();
-    }
-  }catch(err){
-    // Gagal refresh tidak perlu toast — silent fail
-    console.log('[SMART-Boarding] Status refresh gagal:', err.message);
-  }
+  // Gunakan fungsi terpusat syncStatusFromSupabase
+  if(currentRole === null) return;
+  await syncStatusFromSupabase(true);
 }
-
 
 // ══════════════════════════════════════
 // INFOGRAFIS PETUGAS
@@ -2645,6 +2455,61 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
   if(mSummary) mSummary.style.display = 'block';
   if(mTable)   mTable.style.display   = 'block';
   updateDashCounters();
+}
+
+
+// ══════════════════════════════════════
+// SYNC STATUS DARI SUPABASE
+// Fungsi terpusat — dipanggil admin & petugas
+// ══════════════════════════════════════
+async function syncStatusFromSupabase(silent = true){
+  if(!sb || !S.manifest.length) return false;
+  try{
+    const data = await sbGetScanStats();
+    if(!data.rows || data.rows.length === 0) return false;
+
+    const statusRank = { 'naik':3, 'dermaga':2, 'perhatian':1 };
+    const bestStatus = {};
+
+    data.rows.forEach(log => {
+      const ticket    = String(log.no_tiket||log['No Tiket']||'').trim();
+      const rawStatus = String(log.status||log['Status']||'').trim();
+      if(!ticket) return;
+
+      const ms = rawStatus==='NAIK'     ? 'naik'
+               : rawStatus==='OK'       ? 'dermaga'
+               : rawStatus==='PERHATIAN'? 'perhatian'
+               : null;
+      if(!ms) return;
+
+      const cur = statusRank[bestStatus[ticket]] || 0;
+      const nw  = statusRank[ms] || 0;
+      if(nw > cur) bestStatus[ticket] = ms;
+    });
+
+    let changed = false;
+    Object.entries(bestStatus).forEach(([ticket, newStatus]) => {
+      const pax = S.manifest.find(p =>
+        (p['No Tiket']||p.NO_TIKET||'').toString().trim() === ticket
+      );
+      if(pax && pax._status !== newStatus){
+        pax._status = newStatus;
+        changed = true;
+      }
+    });
+
+    if(changed){
+      saveState();
+      renderManifestTable();
+      updateManifestSummary();
+      updateDashCounters();
+      updateInfografis();
+    }
+    return changed;
+  }catch(e){
+    if(!silent) console.error('[SB] syncStatus error:', e.message);
+    return false;
+  }
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
