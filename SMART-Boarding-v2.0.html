@@ -713,6 +713,27 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     </div>
   </div>
 
+  <!-- Paginasi Manifes -->
+  <div id="manifest-pagination" style="display:none;margin:8px 0">
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:10px 14px;background:var(--gray-50);border-radius:10px;
+                border:1px solid var(--gray-200)">
+      <button id="pg-prev" onclick="manifestPrevPage()"
+              style="padding:6px 14px;border-radius:6px;border:1px solid var(--gray-200);
+                     background:#fff;cursor:pointer;font-size:12px;font-weight:700">
+        ← Prev
+      </button>
+      <span id="pg-info" style="font-size:12px;color:var(--gray-600);font-weight:600">
+        1-10 dari 0
+      </span>
+      <button id="pg-next" onclick="manifestNextPage()"
+              style="padding:6px 14px;border-radius:6px;border:1px solid var(--gray-200);
+                     background:#fff;cursor:pointer;font-size:12px;font-weight:700">
+        Next →
+      </button>
+    </div>
+  </div>
+
   <!-- Table Card -->
   <div class="card" id="manifest-table-card" style="display:none">
     <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
@@ -721,7 +742,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       </div>
       <input type="search" placeholder="Cari..." id="search-manifest"
         style="padding:7px 11px;border:1.5px solid var(--gray-200);border-radius:var(--rs);
-        font-size:12px;outline:none;width:140px" oninput="renderManifestTable()"/>
+        font-size:12px;outline:none;width:140px" oninput="S.manifestPage=1; renderManifestTable()"/>
     </div>
 
     <!-- PERINTIS TABLE -->
@@ -756,7 +777,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   <!-- TOMBOL TAMBAH KAPAL (Admin only) -->
   <div id="btn-tambah-kapal-wrap" style="display:none;margin-bottom:12px">
     <button class="btn btn-primary" style="width:100%;padding:14px;font-size:14px;font-weight:700"
-            onclick="showModal('modal-ship')">
+            onclick="openModal('modal-ship')">
       ➕ Tambah Kapal Baru
     </button>
   </div>
@@ -776,7 +797,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
         <div>Atur Info Kapal</div>
         <div style="font-size:11px;font-weight:400;color:var(--gray-500)">Nama kapal, voyage, rute & jam berangkat</div>
       </div>
-      <span class="cl-action" onclick="showModal('modal-ship')">Atur →</span>
+      <span class="cl-action" onclick="openModal('modal-ship')">Atur →</span>
     </div>
 
     <div class="cl-item pending" id="cl-step-2">
@@ -1165,7 +1186,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       </button>
       <button class="btn" style="background:#FFF8E1;color:#E65100;border:1.5px solid #FFB300;
                                   padding:12px;font-size:13px;font-weight:700"
-              onclick="closeModal('modal-sesi-pilihan'); showModal('modal-ship')">
+              onclick="closeModal('modal-sesi-pilihan'); openModal('modal-ship')">
         ➕ Tambah Kapal
       </button>
     </div>
@@ -1260,6 +1281,8 @@ let S = {
   lanjutanLog: [],
   dupAlerts: [],
   logFilter: 'all',
+  manifestPage: 1,        // halaman tabel manifes saat ini
+  manifestPageSize: 10,   // jumlah baris per halaman
 
   // ── Config ──────────────────────────────────────────────
   gs: { url: GS_APPS_SCRIPT_URL, name:'', connected: GS_APPS_SCRIPT_URL!=='', autoSync: GS_APPS_SCRIPT_URL!=='', lastSync:'' },
@@ -2064,6 +2087,7 @@ function applyRole(role){
   // Label "Upload File Manifes" - hanya Admin
   const uploadLabel = document.querySelector('#load-from-sheets-box .slabel:last-of-type');
 
+  updateShipLabel();
   // Admin: tampilkan multi-kapal UI, sembunyikan single-ship
   const btnTambah   = document.getElementById('btn-tambah-kapal-wrap');
   const dashKapal   = document.getElementById('dashboard-kapal-list');
@@ -2436,13 +2460,20 @@ async function sbGetScanLog(){
 // ── MANIFES ───────────────────────────────────────────────────
 async function sbUploadManifes(manifest, tipeKapal){
   if(!sb) return false;
-  // Pakai currentSesiId jika sudah di-set (dari saveShipBaru)
+
+  // Pakai currentSesiId dari saveShipBaru, fallback getSesiId
   const sesiId = S.currentSesiId || getSesiId();
 
+  // Validasi sesiId tidak boleh UNKNOWN
+  if(!sesiId || sesiId.startsWith('UNKNOWN')){
+    console.error('[SB] sesiId tidak valid:', sesiId, '| S.currentSesiId:', S.currentSesiId, '| S.ship:', S.ship);
+    showToast('❌ Info kapal belum diatur · Tambah kapal terlebih dahulu sebelum upload','error');
+    return false;
+  }
+
+  console.log('[SB] Upload manifes → sesiId:', sesiId, '| tipe:', tipeKapal, '| total:', manifest.length);
+
   try{
-    // Tidak lagi hapus sesi lain — multi-sesi dikelola manual oleh Admin
-    // Hanya upsert sesi saat ini
-    // Multi-sesi: setiap kapal punya sesiId tersendiri, tidak perlu arsip otomatis
 
     // ── UPSERT manifes sesi baru ──
     const rows = manifest.map(p => ({
@@ -2499,7 +2530,8 @@ async function sbUploadManifes(manifest, tipeKapal){
     return { ok: true, insertCount, updateCount, isSesiBaruBerbeda };
 
   }catch(e){
-    console.error('[SB] uploadManifes error:', e.message);
+    console.error('[SB] uploadManifes error:', e.message, e);
+    showToast('❌ Gagal simpan ke database: ' + e.message, 'error');
     return false;
   }
 }
@@ -2689,14 +2721,13 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
   S.shipType  = tipeKapal;
   if(namaKapal){
     S.ship.name = namaKapal;
-    const lbl = document.getElementById('ship-label');
-    if(lbl) lbl.textContent = namaKapal;
+    // ship-label dihandle oleh updateShipLabel()
   }
   setManifesLoadTime();
   saveState();
   setShipType(tipeKapal);
+  S.manifestPage = 1; // Reset ke halaman 1 saat manifes baru dimuat
   updateManifestSummary();
-  // Delay render agar DOM siap setelah setShipType
   setTimeout(()=>{
     renderManifestTable();
     updateManifesStatusUI();
@@ -2874,7 +2905,7 @@ function updateChecklist(){
     } else {
       el1.className   = 'cl-action';
       el1.textContent = 'Atur →';
-      el1.onclick     = ()=>showModal('modal-ship');
+      el1.onclick     = ()=>openModal('modal-ship');
     }
     step1.appendChild(el1);
   }
@@ -3018,6 +3049,7 @@ async function sbUpdateTotalManifes(sesiId, total){
 async function refreshKapalAktif(){
   const list = await sbGetSesiAktif();
   S.kapalAktif = list;
+  updateShipLabel();
   return list;
 }
 
@@ -3105,7 +3137,7 @@ async function cekSesiAdminLogin(){
 
   if(sesiList.length === 0){
     // Tidak ada sesi aktif → langsung tampilkan form tambah kapal
-    setTimeout(()=> showModal('modal-ship'), 300);
+    setTimeout(()=> openModal('modal-ship'), 300);
     return;
   }
 
@@ -3131,7 +3163,7 @@ async function cekSesiAdminLogin(){
     `).join('');
   }
 
-  setTimeout(()=> showModal('modal-sesi-pilihan'), 300);
+  setTimeout(()=> openModal('modal-sesi-pilihan'), 300);
 }
 
 // Render dashboard multi-kapal
@@ -3236,7 +3268,7 @@ async function tampilkanPilihKapalF2(){
 
   if(!sesiList.length){
     listEl.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:20px">Belum ada kapal aktif.<br>Hubungi Admin.</div>';
-    showModal('modal-pilih-kapal');
+    openModal('modal-pilih-kapal');
     return;
   }
 
@@ -3254,7 +3286,7 @@ async function tampilkanPilihKapalF2(){
     </button>
   `).join('');
 
-  showModal('modal-pilih-kapal');
+  openModal('modal-pilih-kapal');
 }
 
 // Petugas F2 pilih kapal
@@ -3265,14 +3297,79 @@ async function pilihKapalF2(sesiId, namaKapal, tipeKapal){
   S.shipType = tipeKapal;
   saveState();
 
-  // Update label
-  const lbl = document.getElementById('ship-label');
-  if(lbl) lbl.textContent = namaKapal;
+  // ship-label dihandle oleh updateShipLabel()
 
+  updateShipLabel();
   showToast(`✅ Terkunci ke ${namaKapal} · Siap scan tangga kapal`,'success');
 
   // Load manifes untuk kapal ini
   await autoInitPetugas();
+}
+
+
+// ── Update ship-label di header ─────────────────────────────
+function updateShipLabel(){
+  const lbl = document.getElementById('ship-label');
+  if(!lbl) return;
+  if(currentRole === 'admin'){
+    // Admin: tampilkan jumlah kapal aktif
+    const n = S.kapalAktif.length;
+    lbl.textContent = n > 0 ? n + ' Kapal Aktif' : 'Tambah Kapal';
+  } else if(currentRole === 'f2' && S.ship.name){
+    // F2: tampilkan kapal yang dipilih
+    lbl.textContent = S.ship.name;
+  } else {
+    lbl.textContent = 'Tambah Kapal';
+  }
+}
+
+
+// ══════════════════════════════════════
+// PAGINASI TABEL MANIFES
+// ══════════════════════════════════════
+function manifestPrevPage(){
+  if(S.manifestPage > 1){
+    S.manifestPage--;
+    renderManifestTable();
+  }
+}
+
+function manifestNextPage(){
+  const total = S.manifest.length;
+  const maxPage = Math.ceil(total / S.manifestPageSize);
+  if(S.manifestPage < maxPage){
+    S.manifestPage++;
+    renderManifestTable();
+  }
+}
+
+function resetManifestPage(){
+  S.manifestPage = 1;
+}
+
+function updatePaginasi(filtered){
+  const pg    = document.getElementById('manifest-pagination');
+  const info  = document.getElementById('pg-info');
+  const prev  = document.getElementById('pg-prev');
+  const next  = document.getElementById('pg-next');
+  if(!pg) return;
+
+  const total   = filtered.length;
+  const size    = S.manifestPageSize || 10;
+  const page    = S.manifestPage || 1;
+  const maxPage = Math.ceil(total / size);
+  const start   = (page-1)*size + 1;
+  const end     = Math.min(page*size, total);
+
+  if(total <= size){
+    pg.style.display = 'none';
+    return;
+  }
+
+  pg.style.display = 'block';
+  if(info) info.textContent = `${start}–${end} dari ${total} penumpang`;
+  if(prev) prev.disabled = page <= 1;
+  if(next) next.disabled = page >= maxPage;
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
@@ -3330,6 +3427,13 @@ async function handleUpload(e){
   const uploadLabel = document.getElementById('upload-label');
   if(uploadIcon)  uploadIcon.textContent  = isPDF ? '📄' : '📊';
   if(uploadLabel) uploadLabel.textContent = file.name;
+
+  // Validasi: pastikan kapal sudah ditambahkan dulu
+  if(!S.currentSesiId && (!S.ship.name || !S.ship.voyage)){
+    showToast('❌ Tambah kapal terlebih dahulu via tombol + Tambah Kapal','error');
+    e.target.value = '';
+    return;
+  }
 
   // Tipe kapal sudah terkunci dari modal Tambah Kapal
   const tipeAktif = S.shipType || 'perintis';
@@ -3541,6 +3645,12 @@ async function parsePDF(file){
     saveState();
 
     // Auto-upload ke Supabase
+    // Validasi kapal sudah ditambahkan
+    if(!S.currentSesiId && (!S.ship.name || !S.ship.voyage)){
+      showToast('❌ Tambah kapal terlebih dahulu sebelum upload PDF','error');
+      return;
+    }
+
     if(sb){
       showToast('⏳ Menyimpan ke database...','warning');
       sbUploadManifes(S.manifest, 'penumpang').then(result=>{
@@ -3650,6 +3760,8 @@ function updateManifestSummary(){
 function renderManifestTable(){
   updateManifestSummary();
   const q=(document.getElementById('search-manifest')?.value||'').toLowerCase();
+  // Reset ke halaman 1 jika ada search (dipanggil dari search input)
+  // Tidak reset jika dipanggil dari navigasi halaman
   const filtered=S.manifest.filter(p=>{
     const name=(p['Nama Pnp']||p['NAMA']||'').toLowerCase();
     const ticket=(p['No Tiket']||p['NO_TIKET']||'').toString().toLowerCase();
@@ -3668,7 +3780,12 @@ function renderManifestTable(){
   if(S.shipType==='perintis'){
     const tbody=document.getElementById('tbody-perintis');
     if(!filtered.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray-400);padding:20px">Tidak ada data</td></tr>'; return; }
-    tbody.innerHTML=filtered.slice(0,300).map((p,i)=>{
+    updatePaginasi(filtered);
+    const page = S.manifestPage || 1;
+    const size = S.manifestPageSize || 10;
+    const paginated = filtered.slice((page-1)*size, page*size);
+    tbody.innerHTML=paginated.map((p,i)=>{
+      const i_real = (page-1)*size + i;
       const scan=S.scanLog.find(l=>l.ticket===(p['No Tiket']||p.NO_TIKET||'').toString());
       let dc='dgr',sl='Belum';
       if(p._status==='naik'){dc='dg';sl='✅ Naik';}
@@ -3681,7 +3798,7 @@ function renderManifestTable(){
       const kel=p['Jen. Kelamin']||'';
       const kat=p['Kategori']||'';
       return `<tr>
-        <td style="color:var(--gray-400)">${i+1}</td>
+        <td style="color:var(--gray-400)">${i_real+1}</td>
         <td style="font-family:monospace;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p['No Tiket']||p.NO_TIKET||'—'}</td>
         <td style="font-weight:600">${p['Nama Pnp']||'—'}</td>
         <td>${asal}</td><td>${tujuan}</td>
@@ -3695,7 +3812,12 @@ function renderManifestTable(){
   } else {
     const tbody=document.getElementById('tbody-penumpang');
     if(!filtered.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray-400);padding:20px">Tidak ada data · Upload manifes PDF atau Excel terlebih dahulu</td></tr>'; return; }
-    tbody.innerHTML=filtered.slice(0,500).map((p,i)=>{
+    updatePaginasi(filtered);
+    const page2 = S.manifestPage || 1;
+    const size2 = S.manifestPageSize || 10;
+    const paginated2 = filtered.slice((page2-1)*size2, page2*size2);
+    tbody.innerHTML=paginated2.map((p,i)=>{
+      const i_real = (page2-1)*size2 + i;
       const ticket=(p.NO_TIKET||p['No Tiket']||'').toString();
       const scan=S.scanLog.find(l=>l.ticket===ticket);
       let dc='dgr',sl='Belum';
@@ -3732,7 +3854,7 @@ function renderManifestTable(){
       else if(katUp)
         katBadge=`<span class="badge bgr" style="font-size:10px">${kat}</span>`;
       return `<tr>
-        <td style="color:var(--gray-400);font-size:11px">${i+1}</td>
+        <td style="color:var(--gray-400);font-size:11px">${i_real+1}</td>
         <td style="font-family:monospace;font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ticket}">${ticket||'—'}</td>
         <td style="font-weight:600;font-size:12px">${p.NAMA||p['Nama Pnp']||'—'}</td>
         <td style="font-size:11px">${kelas}</td>
@@ -3787,7 +3909,11 @@ function updateDashCounters(){
   se('d-anak', anak);
   se('d-bayi', bayi);
   // Info kapal
-  se('dash-ship',  S.ship.name||'Belum Diatur');
+  // Multi-sesi: info kapal dari kapalAktif
+  const kapalInfo = S.kapalAktif.length > 0
+    ? S.kapalAktif.map(k=>k.nama_kapal).join(' · ')
+    : (S.ship.name||'Belum Diatur');
+  se('dash-ship', kapalInfo);
   se('dash-route', S.ship.route||'—');
   se('dash-time',  S.ship.time||'—');
   se('dash-type',  S.shipType==='perintis'?'Kapal Perintis':'Kapal Penumpang');
@@ -3796,7 +3922,10 @@ function updateDashCounters(){
 function updateDashboard(){
   updateDashCounters();
   const se2=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
-  se2('dash-ship',  S.ship.name||'Belum Diatur');
+  const kapalInfo2 = S.kapalAktif.length > 0
+    ? S.kapalAktif.map(k=>k.nama_kapal).join(' · ')
+    : (S.ship.name||'Belum Diatur');
+  se2('dash-ship', kapalInfo2);
   se2('dash-route', S.ship.route||(S.ship.voyage?'Voyage: '+S.ship.voyage:'—'));
   se2('dash-time',  S.ship.time||'—');
   se2('dash-type',  S.shipType==='perintis'?'Perintis':'Penumpang');
@@ -4481,7 +4610,7 @@ if(GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim() !== ''){
 }
 
 setShipType(S.shipType);
-if(S.ship.name) document.getElementById('ship-label').textContent=S.ship.name;
+// ship-label diupdate via updateShipLabel()
 if(S.manifest.length){ document.getElementById('manifest-summary').style.display='block'; document.getElementById('manifest-table-card').style.display='block'; updateManifestSummary(); }
 setScanMode(S.scanMode||'camera');
 if(!S.currentPos || !['F1','F2'].includes(S.currentPos)) S.currentPos='F1';
