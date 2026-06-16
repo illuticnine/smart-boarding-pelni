@@ -861,6 +861,11 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
         font-size:12px;outline:none;width:140px" oninput="S.manifestPage=1; renderManifestTable()"/>
     </div>
 
+    <!-- Tab pilih kapal (tampil jika ada lebih dari 1 kapal aktif) -->
+    <div id="manifes-kapal-tabs" style="display:none;margin-bottom:12px;
+         display:flex;gap:6px;flex-wrap:wrap">
+    </div>
+
     <!-- PERINTIS TABLE -->
     <div id="tbl-perintis-wrap" class="tbl-wrap">
       <table class="tbl-perintis">
@@ -887,6 +892,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   </div>
 
 
+</div>
 <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
 <div class="page" id="page-dashboard">
 
@@ -1500,6 +1506,7 @@ function showPage(id){
     setTimeout(()=>{
       updateManifesPage();
       updateManifesStatusUI();
+      updateManifesKapalTabs();
       renderManifestTable();
       refreshLoadSheetsBtn();
       syncStatusFromSupabase(true);
@@ -3169,6 +3176,7 @@ async function refreshKapalAktif(){
   const list = await sbGetSesiAktif();
   S.kapalAktif = list;
   updateShipLabel();
+  updateManifesKapalTabs();
   return list;
 }
 
@@ -3686,6 +3694,55 @@ async function saveShipDariManifes2(){
   const el = document.getElementById('manifes-form-kapal-extra');
   if(el) el.style.display = 'none';
   showToast(`✅ ${nama} ditambahkan`,'success');
+}
+
+
+// Tab pilih kapal di tabel manifes
+function updateManifesKapalTabs(){
+  const tabsEl = document.getElementById('manifes-kapal-tabs');
+  if(!tabsEl) return;
+
+  if(!S.kapalAktif || S.kapalAktif.length <= 1){
+    tabsEl.style.display = 'none';
+    return;
+  }
+
+  tabsEl.style.display = 'flex';
+  tabsEl.innerHTML = S.kapalAktif.map((k, i) => {
+    const isActive = S.currentSesiId === k.sesi_id;
+    return `<button onclick="pilihKapalManifes('${k.sesi_id}')"
+      style="padding:7px 14px;border-radius:20px;border:1.5px solid ${isActive?'#1565C0':'var(--gray-200)'};
+             background:${isActive?'#1565C0':'#fff'};color:${isActive?'#fff':'var(--gray-600)'};
+             font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+      🚢 ${k.nama_kapal}
+      <span style="font-size:10px;opacity:.7;margin-left:4px">${k.tipe_kapal==='perintis'?'Perintis':'Penumpang'}</span>
+    </button>`;
+  }).join('');
+}
+
+async function pilihKapalManifes(sesiId){
+  const kapal = S.kapalAktif.find(k=>k.sesi_id===sesiId);
+  if(!kapal) return;
+
+  showToast('⏳ Memuat manifes '+kapal.nama_kapal+'...','warning');
+  S.currentSesiId = sesiId;
+  S.ship = { name:kapal.nama_kapal, route:kapal.rute||'', voyage:kapal.voyage, time:kapal.jam_etd||'' };
+  S.shipType = kapal.tipe_kapal || 'perintis';
+  saveState();
+  setShipType(kapal.tipe_kapal);
+
+  try{
+    const manifes = await sbGetManifes();
+    S.manifest = manifes;
+    S.manifestPage = 1;
+    saveState();
+    updateManifestSummary();
+    renderManifestTable();
+    updateManifesKapalTabs();
+    showToast('✅ Manifes '+kapal.nama_kapal+' dimuat · '+manifes.length+' penumpang','success');
+  }catch(e){
+    showToast('❌ Gagal muat manifes: '+e.message,'error');
+  }
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
