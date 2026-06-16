@@ -703,7 +703,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   </div>
 
   <!-- ══ LANGKAH 2: UPLOAD MANIFES (Admin only) ══ -->
-  <div id="manifes-step2-card" style="display:none">
+  <div id="manifes-step2-card" style="display:none" data-hidden="true">
     <div class="card" id="manifes-upload-card"
          style="border:2px solid var(--gray-200);opacity:.5;pointer-events:none"
          data-locked="true">
@@ -3508,7 +3508,7 @@ function updateManifesPage(){
 
   if(isAdmin){
     step1.style.display = 'block';
-    step2.style.display = 'block';
+    // step2 dikelola oleh updateManifesStep2() — tampil hanya jika ada kapal
     if(emptyBox) emptyBox.style.display = 'none';
     updateManifesStep1();
     updateManifesStep2();
@@ -3562,40 +3562,46 @@ function updateManifesStep1(){
 
 // Update Step 2 - kunci/buka upload berdasarkan kapal aktif
 function updateManifesStep2(){
-  const card  = document.getElementById('manifes-upload-card');
-  const label = document.getElementById('manifes-step2-label');
-  if(!card) return;
+  const step2 = document.getElementById('manifes-step2-card');
+  if(!step2) return;
 
   const hasKapal = S.kapalAktif && S.kapalAktif.length > 0;
 
-  if(hasKapal){
-    card.style.opacity        = '1';
-    card.style.pointerEvents  = 'auto';
-    card.removeAttribute('data-locked');
-    if(label){ label.style.color='var(--green)'; label.textContent='Siap upload'; }
+  if(!hasKapal){
+    // Sembunyikan step2 sepenuhnya jika belum ada kapal
+    step2.style.display = 'none';
+    return;
+  }
 
-    // Jika lebih dari 1 kapal, tampilkan dropdown pilih kapal
-    const pilihEl = document.getElementById('manifes-pilih-kapal-upload');
-    const selEl   = document.getElementById('sel-kapal-upload');
-    if(S.kapalAktif.length > 1){
-      if(pilihEl) pilihEl.style.display = 'block';
-      if(selEl){
-        selEl.innerHTML = S.kapalAktif.map(k=>
-          `<option value="${k.sesi_id}" data-tipe="${k.tipe_kapal}">${k.nama_kapal} (${k.tipe_kapal})</option>`
-        ).join('');
-        // Set ke kapal pertama secara default
-        setKapalUpload(S.kapalAktif[0].sesi_id);
-      }
-    } else {
-      if(pilihEl) pilihEl.style.display = 'none';
-      // Set otomatis ke kapal satu-satunya
+  // Ada kapal → tampilkan step2
+  step2.style.display = 'block';
+
+  const card  = document.getElementById('manifes-upload-card');
+  const label = document.getElementById('manifes-step2-label');
+
+  if(card){
+    card.style.opacity       = '1';
+    card.style.pointerEvents = 'auto';
+    card.removeAttribute('data-locked');
+  }
+  if(label){ label.style.color='var(--green)'; label.textContent='Siap upload'; }
+
+  // Jika lebih dari 1 kapal → tampilkan dropdown pilih kapal
+  const pilihEl = document.getElementById('manifes-pilih-kapal-upload');
+  const selEl   = document.getElementById('sel-kapal-upload');
+  if(S.kapalAktif.length > 1){
+    if(pilihEl) pilihEl.style.display = 'block';
+    if(selEl){
+      selEl.innerHTML = S.kapalAktif.map(k=>
+        `<option value="${k.sesi_id}" data-tipe="${k.tipe_kapal}">
+          ${k.nama_kapal} (${k.tipe_kapal==='perintis'?'Perintis':'Penumpang'})
+        </option>`
+      ).join('');
       setKapalUpload(S.kapalAktif[0].sesi_id);
     }
   } else {
-    card.style.opacity       = '.5';
-    card.style.pointerEvents = 'none';
-    card.setAttribute('data-locked','true');
-    if(label){ label.style.color='var(--gray-400)'; label.textContent='Tambah kapal dulu'; }
+    if(pilihEl) pilihEl.style.display = 'none';
+    setKapalUpload(S.kapalAktif[0].sesi_id);
   }
 }
 
