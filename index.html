@@ -829,16 +829,12 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     ✅ Sesi Boarding Siap — Petugas Dapat Login
   </div>
 
-  <div class="card" style="background:linear-gradient(135deg,var(--navy),var(--navy-mid));color:#fff;padding:20px">
-    <div style="font-size:10px;opacity:.55;font-weight:700;letter-spacing:1px;text-transform:uppercase">Keberangkatan Aktif</div>
-    <div id="dash-ship" style="font-size:19px;font-weight:800;margin-top:4px">Belum Diatur</div>
-    <div id="dash-route" style="font-size:12px;opacity:.65;margin-top:2px">—</div>
-    <div style="display:flex;gap:18px;margin-top:14px">
-      <div><div style="font-size:10px;opacity:.55">Berangkat</div><div id="dash-time" style="font-size:14px;font-weight:700">—</div></div>
-      <div><div style="font-size:10px;opacity:.55">Sekarang</div><div id="live-clock" style="font-size:14px;font-weight:700">—</div></div>
-      <div><div style="font-size:10px;opacity:.55">Tipe</div><div id="dash-type" style="font-size:14px;font-weight:700">Perintis</div></div>
-    </div>
-  </div>
+  <!-- id legacy dipertahankan agar tidak crash JS yang masih referensi elemen ini -->
+  <span id="dash-ship" style="display:none"></span>
+  <span id="dash-route" style="display:none"></span>
+  <span id="dash-time" style="display:none"></span>
+  <span id="dash-type" style="display:none"></span>
+  <span id="live-clock" style="display:none"></span>
 
   <!-- Tombol refresh dan status sync - hanya tampil untuk Admin -->
   <div id="dash-admin-bar" style="display:none;margin-bottom:12px">
