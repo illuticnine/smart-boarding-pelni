@@ -1699,6 +1699,11 @@ function showPage(id){
       updateManifesPage();
       updateManifesStatusUI();
       updateManifesKapalTabs();
+      // Buka accordion tabel jika ada manifes
+      if(S.manifest && S.manifest.length > 0){
+        const accT = document.getElementById('acc-tabel');
+        if(accT){ accT.style.display='block'; openAcc('acc-tabel'); }
+      }
       renderManifestTable();
       refreshLoadSheetsBtn();
       syncStatusFromSupabase(true);
@@ -2136,9 +2141,15 @@ function updateManifesStatusUI(){
   if(btnSummary) btnSummary.style.display = hasManifes ? '' : 'none';
 
   // Visibilitas upload dikelola updateManifesPage()
-  // Di sini hanya kelola emptyBox untuk petugas
+  // Di sini kelola emptyBox dan accordion tabel
   if(!isAdmin){
     if(emptyBox) emptyBox.style.display = hasManifes ? 'none' : 'block';
+  }
+  // Accordion tabel - update subtitle
+  const accTabelSub = document.getElementById('acc-tabel-sub');
+  if(accTabelSub && hasManifes){
+    const naik = S.manifest.filter(p=>p._status==='naik').length;
+    accTabelSub.textContent = S.manifest.length+' penumpang · '+naik+' naik';
   }
 
   if(!hasManifes) return;
@@ -3051,10 +3062,21 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
     updateManifesStatusUI();
     updateInfografis();
   }, 100);
+  // Tampilkan accordion tabel (struktur baru) dan manifest-summary di dalamnya
   const mSummary = document.getElementById('manifest-summary');
-  const mTable   = document.getElementById('manifest-table-card');
   if(mSummary) mSummary.style.display = 'block';
-  if(mTable)   mTable.style.display   = 'block';
+
+  // Buka accordion tabel dan pastikan tampil
+  const accTabel = document.getElementById('acc-tabel');
+  if(accTabel){
+    accTabel.style.display = 'block';
+    openAcc('acc-tabel');
+  }
+
+  // Legacy: manifest-table-card (tidak dipakai di accordion tapi tetap di-set)
+  const mTable = document.getElementById('manifest-table-card');
+  if(mTable) mTable.style.display = 'none'; // sudah digantikan accordion
+
   updateDashCounters();
   updateAccordionState();
   updateChecklist();
@@ -4557,7 +4579,8 @@ function clearManifest(){
   if(!confirm('Hapus semua data manifes?')) return;
   S.manifest=[]; saveState();
   updateManifestSummary(); renderManifestTable();
-  document.getElementById('manifest-table-card').style.display='none';
+  closeAcc('acc-tabel');
+  updateAccordionState();
   showToast('Manifes dihapus');
 }
 
