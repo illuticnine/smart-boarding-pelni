@@ -585,42 +585,169 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 <!-- ═══════════════════ MANIFEST PAGE ═══════════════════ -->
 <div class="page" id="page-manifest">
 
-  <!-- Upload Card -->
-  <div class="card">
-    <div class="card-title">
-      <div class="cticon" style="background:#E8F5E9">📁</div>
-      Upload Manifes — <span id="manifest-type-label" class="chip ctag-perintis" style="margin-left:4px">Kapal Perintis</span>
+  <!-- ══ LANGKAH 1: TAMBAH KAPAL (Admin only) ══ -->
+  <div id="manifes-step1-card" style="display:none">
+    <div class="card" style="border:2px solid #1565C0">
+      <div class="card-title">
+        <div class="cticon" style="background:#E3F2FD">1️⃣</div>
+        Tambah Kapal
+        <span id="manifes-step1-done" style="display:none;margin-left:auto;
+              font-size:11px;color:var(--green);font-weight:700">✅ Selesai</span>
+      </div>
+
+      <!-- Form tambah kapal inline -->
+      <div id="manifes-form-kapal">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <label class="slabel">Nama Kapal *</label>
+            <input type="text" id="mf-ship-name" placeholder="KM Tilongkabila"
+                   style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                          border-radius:8px;font-size:13px"/>
+          </div>
+          <div>
+            <label class="slabel">No. Voyage *</label>
+            <input type="text" id="mf-ship-voyage" placeholder="11/2026"
+                   style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                          border-radius:8px;font-size:13px"/>
+          </div>
+        </div>
+        <div style="margin-bottom:8px">
+          <label class="slabel">Tipe Kapal</label>
+          <select id="mf-ship-type"
+                  style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                         border-radius:8px;font-size:13px">
+            <option value="perintis">⚓ Kapal Perintis (Excel PPSS)</option>
+            <option value="penumpang">🛳 Kapal Penumpang (PDF Tiket)</option>
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+          <div>
+            <label class="slabel">Rute</label>
+            <input type="text" id="mf-ship-route" placeholder="Kendari → Baubau"
+                   style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                          border-radius:8px;font-size:13px"/>
+          </div>
+          <div>
+            <label class="slabel">Dermaga / Gate</label>
+            <input type="text" id="mf-ship-dermaga" placeholder="Dermaga 1"
+                   style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                          border-radius:8px;font-size:13px"/>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label class="slabel">Jam Berangkat</label>
+          <input type="time" id="mf-ship-time"
+                 style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                        border-radius:8px;font-size:13px"/>
+        </div>
+        <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;font-weight:700"
+                onclick="saveShipDariManifes()">
+          ➕ Tambah Kapal
+        </button>
+      </div>
+
+      <!-- Daftar kapal aktif jika sudah ada -->
+      <div id="manifes-kapal-aktif" style="display:none;margin-top:10px">
+        <div id="manifes-kapal-list"></div>
+        <button class="btn btn-sm" style="width:100%;margin-top:8px;background:#E3F2FD;
+                color:#1565C0;border:1px solid #90CAF9;font-weight:700"
+                onclick="toggleFormKapal()">
+          ➕ Tambah Kapal Lagi
+        </button>
+        <div id="manifes-form-kapal-extra" style="display:none;margin-top:10px">
+          <!-- Form tambah kapal kedua -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label class="slabel">Nama Kapal *</label>
+              <input type="text" id="mf2-ship-name" placeholder="KM Binaiya"
+                     style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                            border-radius:8px;font-size:13px"/>
+            </div>
+            <div>
+              <label class="slabel">No. Voyage *</label>
+              <input type="text" id="mf2-ship-voyage" placeholder="88/2026"
+                     style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                            border-radius:8px;font-size:13px"/>
+            </div>
+          </div>
+          <div style="margin-bottom:8px">
+            <label class="slabel">Tipe Kapal</label>
+            <select id="mf2-ship-type"
+                    style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                           border-radius:8px;font-size:13px">
+              <option value="perintis">⚓ Kapal Perintis (Excel PPSS)</option>
+              <option value="penumpang">🛳 Kapal Penumpang (PDF Tiket)</option>
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+            <div>
+              <label class="slabel">Rute</label>
+              <input type="text" id="mf2-ship-route" placeholder="Kendari → Makassar"
+                     style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                            border-radius:8px;font-size:13px"/>
+            </div>
+            <div>
+              <label class="slabel">Dermaga / Gate</label>
+              <input type="text" id="mf2-ship-dermaga" placeholder="Dermaga 2"
+                     style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                            border-radius:8px;font-size:13px"/>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;font-weight:700"
+                  onclick="saveShipDariManifes2()">
+            ➕ Tambah Kapal Ini
+          </button>
+        </div>
+      </div>
     </div>
+  </div>
 
-    <!-- OPSI 1: Muat dari Database -->
-    <div id="load-from-sheets-box" style="margin-bottom:14px">
+  <!-- ══ LANGKAH 2: UPLOAD MANIFES (Admin only) ══ -->
+  <div id="manifes-step2-card" style="display:none">
+    <div class="card" id="manifes-upload-card"
+         style="border:2px solid var(--gray-200);opacity:.5;pointer-events:none"
+         data-locked="true">
+      <div class="card-title">
+        <div class="cticon" style="background:#FFF8E1">2️⃣</div>
+        Upload Manifes
+        <span id="manifes-step2-label" style="margin-left:auto;font-size:11px;
+              color:var(--gray-400);font-weight:600">Tambah kapal dulu</span>
+      </div>
 
-      <!-- Info status manifes saat ini -->
+      <!-- Pilih kapal target upload (jika ada lebih dari 1) -->
+      <div id="manifes-pilih-kapal-upload" style="display:none;margin-bottom:12px">
+        <label class="slabel">Upload manifes untuk kapal:</label>
+        <select id="sel-kapal-upload"
+                style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                       border-radius:8px;font-size:13px"
+                onchange="setKapalUpload(this.value)">
+        </select>
+      </div>
+
+      <!-- Tipe kapal saat ini -->
+      <div style="margin-bottom:10px">
+        <span class="chip" id="manifest-type-label" style="font-size:12px">Kapal Perintis</span>
+      </div>
+
+      <!-- Status manifes aktif -->
       <div id="manifes-status-card" style="display:none;
            padding:12px 14px;border-radius:10px;margin-bottom:12px;
            background:#E3F2FD;border:1.5px solid #90CAF9">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-size:12px;font-weight:700;color:#1565C0">
-              ☁️ Manifes Aktif
-            </div>
+            <div style="font-size:12px;font-weight:700;color:#1565C0">☁️ Manifes Aktif</div>
             <div id="manifes-status-detail"
-                 style="font-size:11px;color:#1976D2;margin-top:2px;line-height:1.6">
-              —
-            </div>
+                 style="font-size:11px;color:#1976D2;margin-top:2px;line-height:1.6">—</div>
           </div>
-          <button class="btn btn-sm" id="btn-perbarui"
-                  onclick="perbaruiManifes()"
+          <button class="btn btn-sm" id="btn-perbarui" onclick="perbaruiManifes()"
                   style="background:#1565C0;color:#fff;white-space:nowrap;flex-shrink:0">
             🔄 Perbarui Data
           </button>
         </div>
-        <!-- Progress bar saat loading -->
         <div id="manifes-progress" style="display:none;margin-top:10px">
           <div style="height:4px;background:#BBDEFB;border-radius:2px;overflow:hidden">
             <div id="manifes-progress-bar"
-                 style="height:100%;background:#1565C0;width:0%;transition:width .4s;border-radius:2px">
-            </div>
+                 style="height:100%;background:#1565C0;width:0%;transition:width .4s;border-radius:2px"></div>
           </div>
           <div id="manifes-progress-label"
                style="font-size:10px;color:#1976D2;margin-top:4px;text-align:center">
@@ -629,74 +756,69 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
         </div>
       </div>
 
-      <!-- Muat pertama kali (hanya tampil jika belum ada manifes) -->
-      <div id="manifes-empty-box">
-        <div class="slabel">☁️ Muat Manifes dari Database</div>
-        <div style="font-size:11px;color:var(--gray-500);margin-bottom:8px;line-height:1.6">
-          Jika Admin sudah upload manifes, petugas dapat memuat langsung dari database.
-          Pastikan konfigurasi Supabase sudah diisi di menu <b>🗄️ Database</b>.
+      <!-- Upload zone -->
+      <div class="slabel" id="label-upload-file">📂 Upload File Manifes</div>
+      <label for="file-input">
+        <div class="upload-zone" id="upload-zone">
+          <div class="upload-icon" id="upload-icon">📂</div>
+          <div class="upload-label" id="upload-label">Pilih file Excel, CSV, atau PDF</div>
+          <div class="upload-sub" id="upload-sub">Drag & drop di sini · Klik untuk pilih file</div>
         </div>
-        <button class="btn btn-primary" id="btn-load-sheets" onclick="loadManifesFromSheets()">
-          ☁️ Muat Manifes dari Database
-        </button>
-        <div id="load-sheets-status" style="margin-top:8px;font-size:11px;color:var(--gray-500)"></div>
+      </label>
+      <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.pdf" onchange="handleUpload(event)"/>
+
+      <!-- Format info -->
+      <div id="format-perintis" class="info-box teal" style="margin-top:10px">
+        <b>📊 Format Kapal Perintis (PPSS Export Excel):</b><br>
+        Nama Kapal · No Tiket · Pel. Awal · Pel. Tujuan · Tgl Etd · Nama Pnp · Jen. Kelamin · Kategori<br>
+        <span style="opacity:.8">Header data mulai baris ke-10</span>
+      </div>
+      <div id="format-penumpang" class="info-box blue" style="display:none;margin-top:10px">
+        <b>Format Kapal Penumpang:</b><br>
+        <b>📄 PDF</b> — "Daftar Penumpang Regulasi" dari PPSS<br>
+        <b>📊 Excel</b> — NO_TIKET · NAMA · KELAS · TUJUAN · UMUR_TAHUN · KATEGORI
       </div>
 
-    </div>
-
-    <div class="divider" id="divider-upload" style="margin:14px 0">
-      <span style="background:#fff;padding:0 10px;color:var(--gray-400);font-size:11px">atau upload file langsung</span>
-    </div>
-
-    <!-- OPSI 2: Upload file -->
-    <div class="slabel" id="label-upload-file">📂 Upload File Manifes</div>
-    <label for="file-input">
-      <div class="upload-zone" id="upload-zone">
-        <div class="upload-icon" id="upload-icon">📂</div>
-        <div class="upload-label" id="upload-label">Pilih file Excel, CSV, atau PDF</div>
-        <div class="upload-sub" id="upload-sub">Drag & drop di sini · Klik untuk pilih file</div>
-      </div>
-    </label>
-    <input type="file" id="file-input" accept=".xlsx,.xls,.csv,.pdf" onchange="handleUpload(event)"/>
-
-    <!-- Perintis format info -->
-    <div id="format-perintis" class="info-box teal">
-      <b>📊 Format Manifes Kapal Perintis (PPSS Export Excel):</b><br>
-      Nama Kapal · No Tiket · Pel. Awal · Pel. Tujuan · Tgl Etd · Nama Pnp · Jen. Kelamin · Kategori<br>
-      <span style="opacity:.8">Upload file .xlsx hasil export PPSS · Header data mulai baris ke-10</span>
-    </div>
-
-    <!-- Penumpang format info -->
-    <div id="format-penumpang" class="info-box blue" style="display:none">
-      <b>Format Manifes Kapal Penumpang — pilih salah satu:</b><br><br>
-      <b>📄 PDF</b> — "Daftar Penumpang Regulasi" export dari PPSS<br>
-      <span style="margin-left:14px;opacity:.85;font-size:11px">Parser otomatis membaca semua halaman: Kelas · Asal · Tujuan · No Tiket · Nama · Kategori · Umur</span><br><br>
-      <b>📊 Excel / CSV</b> — kolom bebas, minimal:<br>
-      <span style="margin-left:14px;opacity:.85;font-size:11px">NO_TIKET (wajib) · NAMA (wajib) · KELAS · TUJUAN · UMUR_TAHUN · KATEGORI</span>
-    </div>
-
-    <!-- PDF parse progress -->
-    <div id="pdf-progress" style="display:none;margin-top:12px;padding:14px;background:var(--blue-lt);border-radius:var(--rs);border:1.5px solid var(--blue)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="font-size:22px" class="pulse">⏳</div>
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:700;color:var(--blue)" id="pdf-progress-text">Membaca PDF...</div>
-          <div style="font-size:11px;color:var(--gray-600)" id="pdf-progress-sub">Mengekstrak data penumpang dari semua halaman</div>
+      <!-- PDF progress -->
+      <div id="pdf-progress" style="display:none;margin-top:12px;padding:14px;
+           background:var(--blue-lt);border-radius:var(--rs);border:1.5px solid var(--blue)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:22px" class="pulse">⏳</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:var(--blue)" id="pdf-progress-text">Membaca PDF...</div>
+            <div style="font-size:11px;color:var(--gray-600)" id="pdf-progress-sub">Mengekstrak data penumpang</div>
+          </div>
+        </div>
+        <div class="prog-wrap" style="margin-top:8px">
+          <div class="prog" id="pdf-prog-bar" style="width:0%;background:var(--blue)"></div>
         </div>
       </div>
-      <div class="prog-wrap" style="margin-top:8px"><div class="prog" id="pdf-prog-bar" style="width:0%;background:var(--blue)"></div></div>
     </div>
+  </div>
 
-    <!-- Summary -->
-    <div id="manifest-summary" style="display:none;margin-top:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+  <!-- ══ PETUGAS: Muat dari Database ══ -->
+  <div id="manifes-empty-box" style="display:none">
+    <div class="card">
+      <div class="slabel">☁️ Muat Manifes dari Database</div>
+      <div style="font-size:11px;color:var(--gray-500);margin-bottom:8px;line-height:1.6">
+        Manifes dimuat otomatis saat login. Klik Perbarui jika data belum muncul.
+      </div>
+      <button class="btn btn-primary" id="btn-load-sheets" onclick="loadManifesFromSheets()">
+        ☁️ Muat Manifes dari Database
+      </button>
+      <div id="load-sheets-status" style="margin-top:8px;font-size:11px;color:var(--gray-500)"></div>
+    </div>
+  </div>
+
+  <!-- ══ RINGKASAN & TABEL MANIFES ══ -->
+  <div id="manifest-summary" style="display:none;margin-top:4px">
+    <div class="card" style="padding:12px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;
+                  margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <span class="slabel" style="margin:0">Manifes Dimuat</span>
         <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button class="btn btn-sm" id="btn-summary-perbarui"
-                  onclick="perbaruiManifes()"
-                  style="background:#1565C0;color:#fff;display:none">
-            🔄 Perbarui
-          </button>
+          <button class="btn btn-sm" id="btn-summary-perbarui" onclick="perbaruiManifes()"
+                  style="background:#1565C0;color:#fff;display:none">🔄 Perbarui</button>
           <button class="btn btn-sm btn-gray" onclick="clearManifest()">🗑 Hapus</button>
           <button class="btn btn-sm btn-success" onclick="exportLog()">⬇ Export Log</button>
         </div>
@@ -713,28 +835,22 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
     </div>
   </div>
 
-  <!-- Paginasi Manifes -->
+  <!-- Paginasi -->
   <div id="manifest-pagination" style="display:none;margin:8px 0">
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:10px 14px;background:var(--gray-50);border-radius:10px;
                 border:1px solid var(--gray-200)">
       <button id="pg-prev" onclick="manifestPrevPage()"
               style="padding:6px 14px;border-radius:6px;border:1px solid var(--gray-200);
-                     background:#fff;cursor:pointer;font-size:12px;font-weight:700">
-        ← Prev
-      </button>
-      <span id="pg-info" style="font-size:12px;color:var(--gray-600);font-weight:600">
-        1-10 dari 0
-      </span>
+                     background:#fff;cursor:pointer;font-size:12px;font-weight:700">← Prev</button>
+      <span id="pg-info" style="font-size:12px;color:var(--gray-600);font-weight:600">1-10 dari 0</span>
       <button id="pg-next" onclick="manifestNextPage()"
               style="padding:6px 14px;border-radius:6px;border:1px solid var(--gray-200);
-                     background:#fff;cursor:pointer;font-size:12px;font-weight:700">
-        Next →
-      </button>
+                     background:#fff;cursor:pointer;font-size:12px;font-weight:700">Next →</button>
     </div>
   </div>
 
-  <!-- Table Card -->
+  <!-- Tabel Manifes -->
   <div class="card" id="manifest-table-card" style="display:none">
     <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
       <div class="card-title" style="margin:0;flex:1">
@@ -769,7 +885,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       </table>
     </div>
   </div>
-</div>
+
 
 <!-- ═══════════════════ DASHBOARD PAGE ═══════════════════ -->
 <div class="page" id="page-dashboard">
@@ -1382,10 +1498,10 @@ function showPage(id){
   }
   if(id==='manifest'){
     setTimeout(()=>{
+      updateManifesPage();
+      updateManifesStatusUI();
       renderManifestTable();
       refreshLoadSheetsBtn();
-      updateManifesStatusUI();
-      // Sync status terbaru dari Supabase (untuk semua role)
       syncStatusFromSupabase(true);
     }, 50);
   }
@@ -1820,16 +1936,10 @@ function updateManifesStatusUI(){
   if(statusCard) statusCard.style.display = hasManifes ? 'block' : 'none';
   if(btnSummary) btnSummary.style.display = hasManifes ? '' : 'none';
 
-  // Untuk Admin: upload-zone selalu tampil, emptyBox tidak perlu
-  if(isAdmin){
-    if(emptyBox)    emptyBox.style.display   = 'none';
-    if(uploadZone)  uploadZone.style.display  = '';
-    if(labelUpload) labelUpload.style.display = '';
-  } else {
-    // Untuk Petugas: emptyBox tampil jika belum ada manifes
-    if(emptyBox)    emptyBox.style.display   = hasManifes ? 'none' : 'block';
-    if(uploadZone)  uploadZone.style.display  = 'none';
-    if(labelUpload) labelUpload.style.display = 'none';
+  // Visibilitas upload dikelola updateManifesPage()
+  // Di sini hanya kelola emptyBox untuk petugas
+  if(!isAdmin){
+    if(emptyBox) emptyBox.style.display = hasManifes ? 'none' : 'block';
   }
 
   if(!hasManifes) return;
@@ -2061,8 +2171,9 @@ function applyRole(role){
     if(posGrid) posGrid.style.display = 'none';
   }
 
-  // Sembunyikan/tampilkan elemen manifes sesuai role
+  // Update halaman manifes sesuai role
   const isAdmin = role === 'admin';
+  setTimeout(()=>{ if(typeof updateManifesPage === 'function') updateManifesPage(); }, 300);
 
   // Elemen HANYA untuk Admin
   const adminOnlyIds = [
@@ -3107,10 +3218,10 @@ async function saveShipBaru(){
   const timeEl = document.getElementById('inp-ship-time');
   if(timeEl) timeEl.value = '';
 
-  showToast(`✅ KM ${nama} ditambahkan · Upload manifes untuk kapal ini`,'success');
+  showToast(`✅ ${nama} ditambahkan · Upload manifes di tab Manifes`,'success');
   updateChecklist();
   renderDashboardMultiKapal();
-  showPage('manifest');
+  updateManifesPage();
 }
 
 // Legacy saveShip - redirect ke saveShipBaru
@@ -3133,6 +3244,7 @@ async function lanjutSesiLama(){
     // Sync manifest dari Supabase
     await perbaruiManifes();
     renderDashboardMultiKapal();
+    updateManifesPage();
     showToast(`✅ Melanjutkan sesi · ${S.kapalAktif.length} kapal aktif`,'success');
   }
   updateChecklist();
@@ -3378,6 +3490,196 @@ function updatePaginasi(filtered){
   if(info) info.textContent = `${start}–${end} dari ${total} penumpang`;
   if(prev) prev.disabled = page <= 1;
   if(next) next.disabled = page >= maxPage;
+}
+
+
+// ══════════════════════════════════════
+// MANIFES PAGE — FUNGSI BARU
+// ══════════════════════════════════════
+
+// Update tampilan halaman manifes sesuai role dan kondisi
+function updateManifesPage(){
+  const step1 = document.getElementById('manifes-step1-card');
+  const step2 = document.getElementById('manifes-step2-card');
+  const emptyBox = document.getElementById('manifes-empty-box');
+  if(!step1 || !step2) return;
+
+  const isAdmin = currentRole === 'admin';
+
+  if(isAdmin){
+    step1.style.display = 'block';
+    step2.style.display = 'block';
+    if(emptyBox) emptyBox.style.display = 'none';
+    updateManifesStep1();
+    updateManifesStep2();
+  } else {
+    step1.style.display = 'none';
+    step2.style.display = 'none';
+    if(emptyBox) emptyBox.style.display = S.manifest.length ? 'none' : 'block';
+  }
+}
+
+// Update Step 1 - tampilkan kapal aktif atau form kosong
+function updateManifesStep1(){
+  const formKapal    = document.getElementById('manifes-form-kapal');
+  const kapalAktifEl = document.getElementById('manifes-kapal-aktif');
+  const kapalListEl  = document.getElementById('manifes-kapal-list');
+  const doneEl       = document.getElementById('manifes-step1-done');
+
+  if(!S.kapalAktif || S.kapalAktif.length === 0){
+    // Belum ada kapal — tampilkan form
+    if(formKapal)    formKapal.style.display    = 'block';
+    if(kapalAktifEl) kapalAktifEl.style.display = 'none';
+    if(doneEl)       doneEl.style.display       = 'none';
+  } else {
+    // Ada kapal aktif — tampilkan list
+    if(formKapal)    formKapal.style.display    = 'none';
+    if(kapalAktifEl) kapalAktifEl.style.display = 'block';
+    if(doneEl)       doneEl.style.display       = 'inline';
+
+    if(kapalListEl){
+      kapalListEl.innerHTML = S.kapalAktif.map(k=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding:10px 12px;background:#E3F2FD;border-radius:8px;
+                    border:1px solid #90CAF9;margin-bottom:6px">
+          <div>
+            <div style="font-weight:700;font-size:13px;color:#1565C0">🚢 ${k.nama_kapal}</div>
+            <div style="font-size:11px;color:#1976D2">
+              ${k.tipe_kapal==='perintis'?'Perintis':'Penumpang'} · Voyage ${k.voyage}
+              ${k.dermaga?' · '+k.dermaga:''}
+            </div>
+          </div>
+          <button onclick="setKapalUploadTarget('${k.sesi_id}','${k.nama_kapal}','${k.tipe_kapal}')"
+                  style="padding:5px 10px;border-radius:6px;border:1px solid #90CAF9;
+                         background:#fff;color:#1565C0;font-size:11px;font-weight:700;cursor:pointer">
+            Upload →
+          </button>
+        </div>
+      `).join('');
+    }
+  }
+}
+
+// Update Step 2 - kunci/buka upload berdasarkan kapal aktif
+function updateManifesStep2(){
+  const card  = document.getElementById('manifes-upload-card');
+  const label = document.getElementById('manifes-step2-label');
+  if(!card) return;
+
+  const hasKapal = S.kapalAktif && S.kapalAktif.length > 0;
+
+  if(hasKapal){
+    card.style.opacity        = '1';
+    card.style.pointerEvents  = 'auto';
+    card.removeAttribute('data-locked');
+    if(label){ label.style.color='var(--green)'; label.textContent='Siap upload'; }
+
+    // Jika lebih dari 1 kapal, tampilkan dropdown pilih kapal
+    const pilihEl = document.getElementById('manifes-pilih-kapal-upload');
+    const selEl   = document.getElementById('sel-kapal-upload');
+    if(S.kapalAktif.length > 1){
+      if(pilihEl) pilihEl.style.display = 'block';
+      if(selEl){
+        selEl.innerHTML = S.kapalAktif.map(k=>
+          `<option value="${k.sesi_id}" data-tipe="${k.tipe_kapal}">${k.nama_kapal} (${k.tipe_kapal})</option>`
+        ).join('');
+        // Set ke kapal pertama secara default
+        setKapalUpload(S.kapalAktif[0].sesi_id);
+      }
+    } else {
+      if(pilihEl) pilihEl.style.display = 'none';
+      // Set otomatis ke kapal satu-satunya
+      setKapalUpload(S.kapalAktif[0].sesi_id);
+    }
+  } else {
+    card.style.opacity       = '.5';
+    card.style.pointerEvents = 'none';
+    card.setAttribute('data-locked','true');
+    if(label){ label.style.color='var(--gray-400)'; label.textContent='Tambah kapal dulu'; }
+  }
+}
+
+// Set kapal target untuk upload (dari dropdown atau tombol Upload →)
+function setKapalUpload(sesiId){
+  const kapal = S.kapalAktif.find(k=>k.sesi_id===sesiId);
+  if(!kapal) return;
+  S.currentSesiId = sesiId;
+  S.ship = { name:kapal.nama_kapal, route:kapal.rute||'', voyage:kapal.voyage, time:kapal.jam_etd||'' };
+  S.shipType = kapal.tipe_kapal || 'perintis';
+  saveState();
+  setShipType(kapal.tipe_kapal);
+}
+
+function setKapalUploadTarget(sesiId, nama, tipe){
+  setKapalUpload(sesiId);
+  showToast(`✅ Upload manifes untuk ${nama}`,'success');
+}
+
+// Toggle form tambah kapal kedua
+function toggleFormKapal(){
+  const el = document.getElementById('manifes-form-kapal-extra');
+  if(el) el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+// Simpan kapal dari form di halaman manifes (form utama)
+async function saveShipDariManifes(){
+  const nama    = document.getElementById('mf-ship-name').value.trim();
+  const voyage  = document.getElementById('mf-ship-voyage').value.trim();
+  const tipe    = document.getElementById('mf-ship-type').value;
+  const rute    = document.getElementById('mf-ship-route').value.trim();
+  const jam     = document.getElementById('mf-ship-time').value;
+  const dermaga = document.getElementById('mf-ship-dermaga').value.trim();
+
+  if(!nama || !voyage){
+    showToast('⚠️ Nama kapal dan voyage wajib diisi','error');
+    return;
+  }
+
+  showToast('⏳ Menambahkan kapal...','warning');
+  const sesi = await sbTambahKapal({ nama_kapal:nama, voyage, tipe_kapal:tipe, rute, jam_etd:jam, dermaga });
+  if(!sesi){ showToast('❌ Gagal menambahkan kapal','error'); return; }
+
+  S.currentSesiId = sesi.sesi_id;
+  S.ship = { name:nama, route:rute, voyage, time:jam };
+  S.shipType = tipe;
+  saveState();
+  setShipType(tipe);
+
+  await refreshKapalAktif();
+  updateManifesStep1();
+  updateManifesStep2();
+  updateChecklist();
+  renderDashboardMultiKapal();
+  showToast(`✅ ${nama} ditambahkan · Sekarang upload manifes di bawah`,'success');
+}
+
+// Simpan kapal dari form tambah kapal kedua
+async function saveShipDariManifes2(){
+  const nama    = document.getElementById('mf2-ship-name').value.trim();
+  const voyage  = document.getElementById('mf2-ship-voyage').value.trim();
+  const tipe    = document.getElementById('mf2-ship-type').value;
+  const rute    = document.getElementById('mf2-ship-route').value.trim();
+  const dermaga = document.getElementById('mf2-ship-dermaga').value.trim();
+
+  if(!nama || !voyage){
+    showToast('⚠️ Nama kapal dan voyage wajib diisi','error');
+    return;
+  }
+
+  showToast('⏳ Menambahkan kapal...','warning');
+  const sesi = await sbTambahKapal({ nama_kapal:nama, voyage, tipe_kapal:tipe, rute, jam_etd:'', dermaga });
+  if(!sesi){ showToast('❌ Gagal menambahkan kapal','error'); return; }
+
+  await refreshKapalAktif();
+  updateManifesStep1();
+  updateManifesStep2();
+  updateChecklist();
+  renderDashboardMultiKapal();
+
+  // Sembunyikan form extra
+  const el = document.getElementById('manifes-form-kapal-extra');
+  if(el) el.style.display = 'none';
+  showToast(`✅ ${nama} ditambahkan`,'success');
 }
 
 function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
