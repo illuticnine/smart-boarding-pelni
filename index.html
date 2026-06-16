@@ -3046,18 +3046,23 @@ function updateSbConfigStatus(){
 // Terapkan hasil fetch ke state dan UI
 // ══════════════════════════════════════
 function applyManifesToState({ manifest, tipeKapal, namaKapal }){
+  console.log('[SMART] applyManifesToState: manifest='+manifest.length+', tipe='+tipeKapal+', kapal='+namaKapal);
   S.manifest  = manifest;
   S.shipType  = tipeKapal;
   if(namaKapal){
     S.ship.name = namaKapal;
-    // ship-label dihandle oleh updateShipLabel()
   }
   setManifesLoadTime();
   saveState();
   setShipType(tipeKapal);
-  S.manifestPage = 1; // Reset ke halaman 1 saat manifes baru dimuat
+  S.manifestPage = 1;
   updateManifestSummary();
   setTimeout(()=>{
+    console.log('[SMART] setTimeout render: manifest='+S.manifest.length+', shipType='+S.shipType);
+    const tbody = document.getElementById('tbody-'+S.shipType);
+    console.log('[SMART] tbody element:', tbody ? 'ADA' : 'TIDAK ADA (tbody-'+S.shipType+')');
+    const accT  = document.getElementById('acc-tabel');
+    console.log('[SMART] acc-tabel:', accT ? 'ADA, open='+accT.classList.contains('acc-open') : 'TIDAK ADA');
     renderManifestTable();
     updateManifesStatusUI();
     updateInfografis();
@@ -4463,10 +4468,9 @@ function updateManifestSummary(){
 }
 
 function renderManifestTable(){
+  console.log('[SMART] renderManifestTable: total='+S.manifest.length+', shipType='+S.shipType);
   updateManifestSummary();
   const q=(document.getElementById('search-manifest')?.value||'').toLowerCase();
-  // Reset ke halaman 1 jika ada search (dipanggil dari search input)
-  // Tidak reset jika dipanggil dari navigasi halaman
   const filtered=S.manifest.filter(p=>{
     const name=(p['Nama Pnp']||p['NAMA']||'').toLowerCase();
     const ticket=(p['No Tiket']||p['NO_TIKET']||'').toString().toLowerCase();
