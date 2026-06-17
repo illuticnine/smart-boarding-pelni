@@ -2828,16 +2828,21 @@ async function sbUploadManifes(manifest, tipeKapal){
       updateCount += Math.min(50, toUpdate.length-i);
     }
 
-    // Catat/update sesi kapal
+    // Catat/update sesi kapal + total_manifes (hitung ulang dari tabel manifes)
+    const { count: totalRows } = await sb.from('manifes')
+      .select('*', { count: 'exact', head: true })
+      .eq('sesi_id', sesiId);
+
     await sb.from('sesi_kapal').upsert({
-      sesi_id    : sesiId,
-      nama_kapal : S.ship.name||'',
-      voyage     : S.ship.voyage||'',
-      tipe_kapal : tipeKapal,
-      status     : 'aktif',
+      sesi_id      : sesiId,
+      nama_kapal   : S.ship.name||'',
+      voyage       : S.ship.voyage||'',
+      tipe_kapal   : tipeKapal,
+      status       : 'aktif',
+      total_manifes: totalRows || rows.length,
     }, { onConflict: 'sesi_id' });
 
-    console.log(`[SB] Upload selesai: ${insertCount} baru, ${updateCount} diperbarui`);
+    console.log(`[SB] Upload selesai: ${insertCount} baru, ${updateCount} diperbarui, total_manifes=${totalRows||rows.length}`);
     return { ok: true, insertCount, updateCount, isSesiBaruBerbeda };
 
   }catch(e){
@@ -3365,6 +3370,23 @@ async function sbUpdateTotalManifes(sesiId, total){
 // Refresh daftar kapal aktif ke S.kapalAktif
 async function refreshKapalAktif(){
   const list = await sbGetSesiAktif();
+
+  // Perbaikan data lama: jika total_manifes masih 0/null tapi manifes ada,
+  // hitung ulang dari tabel manifes dan simpan
+  for(const kapal of list){
+    if(!kapal.total_manifes || kapal.total_manifes === 0){
+      const { count } = await sb.from('manifes')
+        .select('*', { count: 'exact', head: true })
+        .eq('sesi_id', kapal.sesi_id);
+      if(count && count > 0){
+        kapal.total_manifes = count;
+        await sb.from('sesi_kapal')
+          .update({ total_manifes: count })
+          .eq('sesi_id', kapal.sesi_id);
+      }
+    }
+  }
+
   S.kapalAktif = list;
   updateShipLabel();
   updateManifesKapalTabs();
