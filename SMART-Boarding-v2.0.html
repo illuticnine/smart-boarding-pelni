@@ -1671,11 +1671,11 @@ function showPage(id){
   document.getElementById('tab-'+id).classList.add('active');
   if(id==='dashboard'){
     updateDashboard();
-    // Admin: tampilkan bar refresh dan auto-refresh dari Sheets
+    // Admin: tampilkan bar refresh, render card multi-kapal, auto-refresh
     const adminBar = document.getElementById('dash-admin-bar');
     if(adminBar) adminBar.style.display = (currentRole==='admin') ? 'block' : 'none';
     if(currentRole==='admin' && sb){
-      refreshDashboardFromSheets();
+      refreshKapalAktif().then(()=> renderDashboardMultiKapal());
       startDashAutoRefresh();
     }
   } else {
@@ -2601,6 +2601,7 @@ function startDashAutoRefresh(){
     const dashPage = document.getElementById('page-dashboard');
     if(dashPage && dashPage.classList.contains('active') && currentRole==='admin'){
       refreshDashboardFromSheets();
+      renderDashboardMultiKapal();
       updateCountdownTick(); // reset countdown
     }
   }, DASH_REFRESH_INTERVAL);
