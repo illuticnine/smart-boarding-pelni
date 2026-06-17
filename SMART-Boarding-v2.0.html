@@ -1698,6 +1698,9 @@ function showPage(id){
       refreshLoadSheetsBtn();
       syncStatusFromSupabase(true);
     }, 50);
+    if(currentRole==='admin') startManifestAutoRefresh();
+  } else {
+    stopManifestAutoRefresh();
   }
   if(id==='scan'){
     updateInfografis();
@@ -2491,6 +2494,7 @@ function confirmLogout(){
 
 function logout(){
   stopDashAutoRefresh();       // Hentikan auto-refresh dashboard
+  stopManifestAutoRefresh();   // Hentikan auto-refresh manifes
   stopPetugasStatusRefresh();  // Hentikan auto-refresh status petugas
   currentRole = null;
   selectedLoginRole = null;
@@ -2615,6 +2619,23 @@ async function refreshDashboardFromSheets(){
 // ══════════════════════════════════════
 let _dashRefreshTimer = null;
 const DASH_REFRESH_INTERVAL = 30000; // 30 detik
+
+let _manifestRefreshTimer = null;
+const MANIFEST_REFRESH_INTERVAL = 10000; // 10 detik — lebih cepat dari dashboard karena ini operasional aktif
+
+function startManifestAutoRefresh(){
+  stopManifestAutoRefresh();
+  _manifestRefreshTimer = setInterval(()=>{
+    const manifestPage = document.getElementById('page-manifest');
+    if(manifestPage && manifestPage.classList.contains('active') && currentRole==='admin'){
+      syncStatusFromSupabase(true);
+    }
+  }, MANIFEST_REFRESH_INTERVAL);
+}
+
+function stopManifestAutoRefresh(){
+  if(_manifestRefreshTimer){ clearInterval(_manifestRefreshTimer); _manifestRefreshTimer = null; }
+}
 
 function startDashAutoRefresh(){
   stopDashAutoRefresh(); // clear timer lama jika ada
@@ -4104,6 +4125,9 @@ async function pilihKapalManifes(sesiId){
       tipeKapal : kapal.tipe_kapal || 'perintis',
       namaKapal : kapal.nama_kapal,
     });
+    // Sync status scan terbaru (NAIK/OK/PERHATIAN) untuk kapal yang baru dipilih
+    // agar tabel langsung menampilkan data real-time, tidak perlu klik Perbarui manual
+    await syncStatusFromSupabase(true);
     updateManifesKapalTabs();
     showToast('✅ Manifes '+kapal.nama_kapal+' dimuat · '+manifes.length+' penumpang','success');
   }catch(e){
