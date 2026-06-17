@@ -2428,10 +2428,14 @@ function applyRole(role){
       S.manifest = [];
       saveState();
 
+      console.log('[CEK] Sebelum setTimeout F2, role saat ini:', currentRole);
       setTimeout(()=>{
+        console.log('[CEK] setTimeout 400ms jalan, currentRole:', currentRole, '- panggil tampilkanPilihKapalF2');
         tampilkanPilihKapalF2().then(()=>{
+          console.log('[CEK] tampilkanPilihKapalF2 SUKSES selesai');
           setTimeout(startPetugasStatusRefresh, 3000);
         }).catch(e=>{
+          console.error('[CEK] tampilkanPilihKapalF2 GAGAL:', e);
         });
       }, 400);
     } else {
