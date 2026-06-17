@@ -2431,6 +2431,7 @@ function applyRole(role){
       setTimeout(()=>{
         tampilkanPilihKapalF2().then(()=>{
           setTimeout(startPetugasStatusRefresh, 3000);
+        }).catch(e=>{
         });
       }, 400);
     } else {
@@ -3790,8 +3791,8 @@ async function tampilkanPilihKapalF2(){
       </div>
     </button>
   `).join('');
-
   openModal('modal-pilih-kapal');
+  const m = document.getElementById('modal-pilih-kapal');
 }
 
 // Petugas F2 pilih kapal
@@ -3896,9 +3897,9 @@ function updateManifesPage(){
     updateManifesStep2();
     updateAccordionState();
   } else {
-    step1.style.display = 'none';
-    step2.style.display = 'none';
-    if(emptyBox) emptyBox.style.display = S.manifest.length ? 'none' : 'block';
+    if(accKapal)  accKapal.style.display  = 'none';
+    if(accUpload) accUpload.style.display = 'none';
+    if(emptyBox)  emptyBox.style.display  = S.manifest.length ? 'none' : 'block';
   }
 }
 
