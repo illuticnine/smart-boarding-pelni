@@ -5113,7 +5113,11 @@ function openModal(id){
     const titleEl = document.getElementById('modal-ship-title');
     if(titleEl) titleEl.textContent = '🚢 Tambah Kapal Baru';
   }
-  document.getElementById(id).classList.add('open');
+  const modalEl = document.getElementById(id);
+  if(modalEl){
+    modalEl.style.removeProperty('display'); // hapus inline display:none agar class .open berlaku
+    modalEl.classList.add('open');
+  }
 }
 // saveShip → lihat saveShipBaru()
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
