@@ -1428,6 +1428,8 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       💡 Jalankan file <b>supabase_schema.sql</b> di SQL Editor Supabase untuk membuat tabel-tabel ini.
     </div>
   </div>
+</div>
+</div>
 
 <!-- MODAL: SHIP -->
 <div class="modal-bg" id="modal-ship">
@@ -2428,14 +2430,9 @@ function applyRole(role){
       S.manifest = [];
       saveState();
 
-      console.log('[CEK] Sebelum setTimeout F2, role saat ini:', currentRole);
       setTimeout(()=>{
-        console.log('[CEK] setTimeout 400ms jalan, currentRole:', currentRole, '- panggil tampilkanPilihKapalF2');
         tampilkanPilihKapalF2().then(()=>{
-          console.log('[CEK] tampilkanPilihKapalF2 SUKSES selesai');
           setTimeout(startPetugasStatusRefresh, 3000);
-        }).catch(e=>{
-          console.error('[CEK] tampilkanPilihKapalF2 GAGAL:', e);
         });
       }, 400);
     } else {
@@ -5487,7 +5484,5 @@ if(document.readyState === 'loading'){
   initApp(); // DOM sudah siap
 }
 </script>
-</div>
-</div>
 </body>
 </html>
