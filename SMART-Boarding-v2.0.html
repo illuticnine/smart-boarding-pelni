@@ -3524,90 +3524,127 @@ async function renderDashboardMultiKapal(){
   if(!S.kapalAktif.length){
     container.innerHTML = `
       <div style="text-align:center;padding:30px;color:var(--gray-400)">
-        <div style="font-size:32px;margin-bottom:8px">🚢</div>
+        <div style="font-size:36px;margin-bottom:8px">🚢</div>
         <div style="font-weight:600">Belum ada kapal aktif</div>
-        <div style="font-size:12px;margin-top:4px">Klik + Tambah Kapal untuk memulai</div>
+        <div style="font-size:12px;margin-top:4px">Buka tab Manifes untuk tambah kapal</div>
       </div>`;
+    const gabEl = document.getElementById('dash-gabungan');
+    if(gabEl) gabEl.style.display = 'none';
     return;
   }
 
-  // Ambil stats per kapal dari Supabase
+  // Ambil stats semua kapal dari Supabase sekaligus
   const cards = await Promise.all(S.kapalAktif.map(async kapal => {
     const { data: scanData } = await sb.from('scan_log')
       .select('status,pos')
       .eq('sesi_id', kapal.sesi_id);
-
-    const scans  = scanData || [];
-    const f1     = scans.filter(r=>r.pos==='F1'&&r.status==='OK').length;
-    const naik   = scans.filter(r=>r.status==='NAIK').length;
-    const dup    = scans.filter(r=>r.status==='DUPLIKAT').length;
-    const total  = kapal.total_manifes || 0;
-    const sisa   = Math.max(0, total - naik);
-    const pct    = total > 0 ? Math.round(naik/total*100) : 0;
-
-    return { kapal, f1, naik, sisa, total, pct, dup };
+    const scans = scanData || [];
+    const f1    = scans.filter(r=>r.pos==='F1'&&r.status==='OK').length;
+    const naik  = scans.filter(r=>r.status==='NAIK').length;
+    const dup   = scans.filter(r=>r.status==='DUPLIKAT').length;
+    const total = kapal.total_manifes || 0;
+    const sisa  = Math.max(0, total - naik);
+    const pct   = total > 0 ? Math.round(naik/total*100) : 0;
+    // Warna progress berdasarkan persentase
+    const pctColor = pct >= 90 ? '#69F0AE' : pct >= 60 ? '#FFD740' : '#FF7043';
+    return { kapal, f1, naik, sisa, total, pct, dup, pctColor };
   }));
 
-  // Hitung total gabungan semua kapal
-  const totalGab = cards.reduce((s,d)=>s+d.total, 0);
-  const naikGab  = cards.reduce((s,d)=>s+d.naik, 0);
-  const f1Gab    = cards.reduce((s,d)=>s+d.f1, 0);
-  const dupGab   = cards.reduce((s,d)=>s+(d.dup||0), 0);
-  const pctGab   = totalGab > 0 ? Math.round(naikGab/totalGab*100) : 0;
-  const se = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
-  se('d-total', totalGab);
-  se('d-naik',  naikGab);
-  se('d-f1',    f1Gab);
-  se('d-dup',   dupGab);
-  se('prog-pct', pctGab+'%');
-  const pb = document.getElementById('prog-bar');
-  if(pb) pb.style.width = pctGab+'%';
-  const gabEl = document.getElementById('dash-gabungan');
-  if(gabEl) gabEl.style.display = cards.length > 0 ? 'block' : 'none';
+  // ── Render card per kapal ──────────────────────────────────
+  container.innerHTML = cards.map(({kapal, f1, naik, sisa, total, pct, dup, pctColor}) => `
+    <div style="border-radius:16px;margin-bottom:12px;overflow:hidden;
+                box-shadow:0 4px 20px rgba(0,0,0,.12)">
 
-  container.innerHTML = cards.map(({kapal, f1, naik, sisa, total, pct}) => `
-    <div style="background:linear-gradient(135deg,#0A2342,#1565C0);border-radius:14px;
-                padding:16px;margin-bottom:12px;color:#fff">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
-        <div>
-          <div style="font-size:15px;font-weight:800">🚢 ${kapal.nama_kapal}</div>
-          <div style="font-size:11px;opacity:.7;margin-top:2px">
-            Voyage ${kapal.voyage}
-            ${kapal.dermaga ? ' · '+kapal.dermaga : ''}
-            ${kapal.jam_etd ? ' · ETD '+kapal.jam_etd : ''}
+      <!-- Header kapal -->
+      <div style="background:linear-gradient(135deg,#0A2342,#1565C0);
+                  padding:14px 16px;color:#fff">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:15px;font-weight:800;letter-spacing:-.2px">
+              🚢 ${kapal.nama_kapal}
+            </div>
+            <div style="font-size:11px;opacity:.65;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">
+              <span>Voyage ${kapal.voyage}</span>
+              ${kapal.tipe_kapal==='perintis'
+                ? '<span style="background:rgba(255,255,255,.15);padding:1px 6px;border-radius:10px">⚓ Perintis</span>'
+                : '<span style="background:rgba(255,255,255,.15);padding:1px 6px;border-radius:10px">🛳 Penumpang</span>'}
+              ${kapal.dermaga ? `<span>📍 ${kapal.dermaga}</span>` : ''}
+              ${kapal.jam_etd ? `<span>🕐 ETD ${kapal.jam_etd}</span>` : ''}
+            </div>
+          </div>
+          <button onclick="konfirmasiSelesaiKapal('${kapal.sesi_id}','${kapal.nama_kapal}')"
+                  style="background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.25);
+                         color:#fff;border-radius:10px;padding:7px 12px;font-size:11px;
+                         font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;
+                         transition:background .2s">
+            ✅ Selesai
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div style="background:#fff;padding:14px 16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+          <div style="text-align:center;padding:10px 6px;background:#F8F9FA;border-radius:10px">
+            <div style="font-size:20px;font-weight:800;color:#1565C0">${total}</div>
+            <div style="font-size:10px;color:#666;margin-top:2px;font-weight:600">Total</div>
+          </div>
+          <div style="text-align:center;padding:10px 6px;background:#F8F9FA;border-radius:10px">
+            <div style="font-size:20px;font-weight:800;color:#2E7D32">${f1}</div>
+            <div style="font-size:10px;color:#666;margin-top:2px;font-weight:600">Lewat F1</div>
+          </div>
+          <div style="text-align:center;padding:10px 6px;background:#F8F9FA;border-radius:10px">
+            <div style="font-size:20px;font-weight:800;color:#E65100">${naik}</div>
+            <div style="font-size:10px;color:#666;margin-top:2px;font-weight:600">Naik Kapal</div>
+          </div>
+          <div style="text-align:center;padding:10px 6px;
+                      background:${dup>0?'#FFF3E0':'#F8F9FA'};border-radius:10px">
+            <div style="font-size:20px;font-weight:800;color:${dup>0?'#E65100':'#999'}">${dup}</div>
+            <div style="font-size:10px;color:#666;margin-top:2px;font-weight:600">Duplikat</div>
           </div>
         </div>
-        <button onclick="konfirmasiSelesaiKapal('${kapal.sesi_id}','${kapal.nama_kapal}')"
-                style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
-                       color:#fff;border-radius:8px;padding:6px 10px;font-size:11px;
-                       font-weight:700;cursor:pointer">
-          ✅ Selesai
-        </button>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
-        <div style="text-align:center;background:rgba(255,255,255,.1);border-radius:8px;padding:8px">
-          <div style="font-size:22px;font-weight:800;color:#69F0AE">${f1}</div>
-          <div style="font-size:10px;opacity:.7">Lewat F1</div>
+
+        <!-- Progress bar -->
+        <div style="display:flex;justify-content:space-between;
+                    font-size:11px;color:#666;margin-bottom:5px">
+          <span>${naik} dari ${total} penumpang naik</span>
+          <span style="font-weight:800;color:${pctColor}">${pct}%</span>
         </div>
-        <div style="text-align:center;background:rgba(255,255,255,.1);border-radius:8px;padding:8px">
-          <div style="font-size:22px;font-weight:800;color:#FFD740">${naik}</div>
-          <div style="font-size:10px;opacity:.7">Naik Kapal</div>
+        <div style="background:#F0F0F0;border-radius:6px;height:8px;overflow:hidden">
+          <div style="background:linear-gradient(90deg,#1565C0,${pctColor});
+                      height:100%;border-radius:6px;width:${pct}%;
+                      transition:width .6s cubic-bezier(.4,0,.2,1)"></div>
         </div>
-        <div style="text-align:center;background:rgba(255,255,255,.1);border-radius:8px;padding:8px">
-          <div style="font-size:22px;font-weight:800">${sisa}</div>
-          <div style="font-size:10px;opacity:.7">Belum Naik</div>
+        <div style="display:flex;justify-content:space-between;
+                    font-size:10px;color:#999;margin-top:5px">
+          <span style="color:${sisa>0?'#E65100':'#43A047'};font-weight:600">
+            ${sisa > 0 ? sisa+' belum naik' : '✅ Semua penumpang naik'}
+          </span>
+          <span>${kapal.jam_etd ? 'ETD '+kapal.jam_etd : ''}</span>
         </div>
-      </div>
-      <div style="background:rgba(255,255,255,.15);border-radius:4px;height:6px;overflow:hidden">
-        <div style="background:linear-gradient(90deg,#69F0AE,#00E676);height:100%;
-                    border-radius:4px;width:${pct}%;transition:width .5s ease"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px;opacity:.6">
-        <span>${naik} dari ${total} naik</span>
-        <span style="color:#69F0AE;font-weight:700">${pct}%</span>
       </div>
     </div>
   `).join('');
+
+  // ── Update counter gabungan ────────────────────────────────
+  const totalGab = cards.reduce((s,d)=>s+d.total, 0);
+  const naikGab  = cards.reduce((s,d)=>s+d.naik,  0);
+  const f1Gab    = cards.reduce((s,d)=>s+d.f1,    0);
+  const dupGab   = cards.reduce((s,d)=>s+d.dup,   0);
+  const pctGab   = totalGab > 0 ? Math.round(naikGab/totalGab*100) : 0;
+
+  const se = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  se('d-total',  totalGab);
+  se('d-naik',   naikGab);
+  se('d-f1',     f1Gab);
+  se('d-dup',    dupGab);
+  se('prog-pct', pctGab+'%');
+  const pb = document.getElementById('prog-bar');
+  if(pb) pb.style.width = pctGab+'%';
+
+  // Tampilkan/sembunyikan gabungan
+  const gabEl = document.getElementById('dash-gabungan');
+  if(gabEl) gabEl.style.display = cards.length > 1 ? 'block' : 'none';
 }
 
 // Konfirmasi selesai embarkasi kapal
@@ -4575,7 +4612,8 @@ function updateDashCounters(){
   if(currentRole === 'admin'){
     const gabEl = document.getElementById('dash-gabungan');
     const petEl = document.getElementById('dash-petugas');
-    if(gabEl) gabEl.style.display = S.kapalAktif && S.kapalAktif.length > 0 ? 'block' : 'none';
+    // Ringkasan gabungan hanya relevan jika ada 2+ kapal aktif
+    if(gabEl) gabEl.style.display = S.kapalAktif && S.kapalAktif.length > 1 ? 'block' : 'none';
     if(petEl) petEl.style.display = 'none';
     return; // Admin counter diisi oleh renderDashboardMultiKapal
   }
