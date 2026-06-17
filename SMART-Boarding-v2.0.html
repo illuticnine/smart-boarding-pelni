@@ -2421,10 +2421,18 @@ function applyRole(role){
   // Auto-load manifes dan mulai refresh status untuk petugas
   if(!isAdmin){
     if(role === 'f2'){
-      // F2 harus pilih kapal dulu
-      tampilkanPilihKapalF2().then(()=>{
-        setTimeout(startPetugasStatusRefresh, 3000);
-      });
+      // F2 WAJIB pilih kapal setiap kali login — reset sesi lama agar
+      // tidak otomatis terkunci ke kapal dari sesi browser sebelumnya
+      S.currentSesiId = null;
+      S.ship = { name:'', route:'', voyage:'', time:'' };
+      S.manifest = [];
+      saveState();
+
+      setTimeout(()=>{
+        tampilkanPilihKapalF2().then(()=>{
+          setTimeout(startPetugasStatusRefresh, 3000);
+        });
+      }, 400);
     } else {
       // F1 langsung load semua manifes aktif
       autoInitPetugas().then(()=>{
@@ -2484,6 +2492,15 @@ function logout(){
   stopPetugasStatusRefresh();  // Hentikan auto-refresh status petugas
   currentRole = null;
   selectedLoginRole = null;
+
+  // Reset state sesi petugas — agar F2 wajib pilih kapal lagi saat login berikutnya
+  // (Admin punya cekSesiAdminLogin sendiri yang independen dari ini)
+  S.currentSesiId = null;
+  S.ship = { name:'', route:'', voyage:'', time:'' };
+  S.manifest = [];
+  S.manifestPage = 1;
+  saveState();
+
   // Reset form login
   document.getElementById('pin-input').value='';
   document.getElementById('login-err').textContent='';
@@ -3736,6 +3753,18 @@ async function konfirmasiSelesaiKapal(sesiId, namaKapal){
 
 // Tampilkan modal pilih kapal untuk petugas F2
 async function tampilkanPilihKapalF2(){
+  // Pastikan Supabase client siap — coba init ulang jika belum
+  if(!sb){
+    const ok = initSupabase();
+    if(!ok){
+      openModal('modal-pilih-kapal');
+      const listElErr = document.getElementById('list-pilih-kapal');
+      if(listElErr) listElErr.innerHTML =
+        '<div style="text-align:center;color:var(--red);padding:20px">⚠️ Database belum dikonfigurasi.<br>Hubungi Admin.</div>';
+      return;
+    }
+  }
+
   const sesiList = await sbGetSesiAktif();
   S.kapalAktif = sesiList;
 
@@ -5122,7 +5151,11 @@ function openModal(id){
 // saveShip → lihat saveShipBaru()
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.modal-bg').forEach(m=>
-  m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); })
+  m.addEventListener('click',e=>{
+    // modal-pilih-kapal wajib diisi F2 — tidak boleh ditutup via klik backdrop
+    if(m.id === 'modal-pilih-kapal') return;
+    if(e.target===m) m.classList.remove('open');
+  })
 );
 
 // ══════════════════════════════════════════
