@@ -2419,8 +2419,10 @@ function applyRole(role){
   }
 
   // Auto-load manifes dan mulai refresh status untuk petugas
+  console.log('[DEBUG] applyRole dipanggil, role=', role, 'isAdmin=', isAdmin);
   if(!isAdmin){
     if(role === 'f2'){
+      console.log('[DEBUG] Masuk blok F2, akan reset state dan panggil tampilkanPilihKapalF2');
       // F2 WAJIB pilih kapal setiap kali login — reset sesi lama agar
       // tidak otomatis terkunci ke kapal dari sesi browser sebelumnya
       S.currentSesiId = null;
@@ -2429,8 +2431,12 @@ function applyRole(role){
       saveState();
 
       setTimeout(()=>{
+        console.log('[DEBUG] setTimeout jalan, memanggil tampilkanPilihKapalF2');
         tampilkanPilihKapalF2().then(()=>{
+          console.log('[DEBUG] tampilkanPilihKapalF2 selesai (then)');
           setTimeout(startPetugasStatusRefresh, 3000);
+        }).catch(e=>{
+          console.error('[DEBUG] tampilkanPilihKapalF2 ERROR:', e);
         });
       }, 400);
     } else {
@@ -3753,6 +3759,7 @@ async function konfirmasiSelesaiKapal(sesiId, namaKapal){
 
 // Tampilkan modal pilih kapal untuk petugas F2
 async function tampilkanPilihKapalF2(){
+  console.log('[DEBUG] tampilkanPilihKapalF2 MULAI, sb=', !!sb);
   // Pastikan Supabase client siap — coba init ulang jika belum
   if(!sb){
     const ok = initSupabase();
@@ -3791,7 +3798,10 @@ async function tampilkanPilihKapalF2(){
     </button>
   `).join('');
 
+  console.log('[DEBUG] Akan openModal, sesiList.length=', sesiList.length);
   openModal('modal-pilih-kapal');
+  const m = document.getElementById('modal-pilih-kapal');
+  console.log('[DEBUG] Modal setelah openModal - classList:', m.classList.toString(), '| computed display:', window.getComputedStyle(m).display, '| inline style:', m.getAttribute('style'));
 }
 
 // Petugas F2 pilih kapal
