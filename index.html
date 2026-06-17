@@ -1947,12 +1947,11 @@ async function processTicket(ticketNo){
 
   showResult(status,name,info,gender,kategori,tujuan);
   updateDashCounters();
-  // Update tabel manifes agar status langsung terlihat berubah
   renderManifestTable();
-  updateInfografis();
 
-  // Simpan ke Supabase (real-time)
-  sbAddLog({...entry, _sesiId: entry.sesiId});
+  // Kirim ke Supabase DULU, baru update infografis (agar F1 hitung data terbaru)
+  await sbAddLog({...entry, _sesiId: entry.sesiId});
+  updateInfografis();
 }
 
 function getName(pax){
@@ -2463,6 +2462,10 @@ async function autoInitPetugas(){
 
   showToast('⏳ Memuat manifes...','warning');
   try{
+    // F1: load semua sesi aktif agar bisa auto-detect kapal saat scan
+    if(currentRole === 'f1'){
+      await refreshKapalAktif();
+    }
     const result = await fetchManifesFromGS();
     applyManifesToState(result);
     showToast('✅ '+result.manifest.length+' penumpang siap di-boarding','success');
@@ -2682,51 +2685,83 @@ function updateInfografis(){
   const box = document.getElementById('petugas-infografis');
   if(!box) return;
 
-  // Hanya tampil untuk petugas, bukan admin
   if(currentRole === 'admin' || !currentRole){
     box.style.display = 'none';
     return;
   }
   box.style.display = 'block';
 
+  if(currentRole === 'f1'){
+    updateInfografisF1();
+  } else if(currentRole === 'f2'){
+    updateInfografisF2();
+  }
+}
+
+// F1: hitung dari SEMUA sesi aktif di Supabase (bukan S.manifest lokal)
+// karena F1 melayani campuran penumpang dari berbagai kapal
+async function updateInfografisF1(){
+  document.getElementById('infog-f1-stats').style.display='grid';
+  document.getElementById('infog-f2-stats').style.display='none';
+  document.getElementById('infog-title').textContent='🚪 Filter 1 — Gerbang Trestle';
+
+  const se = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+
+  if(!sb || !S.kapalAktif || S.kapalAktif.length === 0){
+    se('infog-f1-lewat', 0); se('infog-f1-sisa', 0); se('infog-f1-dup', 0);
+    return;
+  }
+
+  // Total manifes gabungan semua kapal aktif
+  const totalGab = S.kapalAktif.reduce((s,k)=>s+(k.total_manifes||0), 0);
+
+  // Hitung scan F1 gabungan dari semua sesi aktif sekaligus
+  const sesiIds = S.kapalAktif.map(k=>k.sesi_id);
+  const { data: scans } = await sb.from('scan_log')
+    .select('pos,status,sesi_id')
+    .in('sesi_id', sesiIds);
+
+  const rows    = scans || [];
+  const lewatF1 = rows.filter(r=>r.pos==='F1' && (r.status==='OK'||r.status==='NAIK')).length;
+  const dup     = rows.filter(r=>r.status==='DUPLIKAT').length;
+  const belum   = Math.max(0, totalGab - lewatF1);
+  const pct     = totalGab > 0 ? Math.round(lewatF1/totalGab*100) : 0;
+
+  se('infog-f1-lewat', lewatF1);
+  se('infog-f1-sisa',  belum);
+  se('infog-f1-dup',   dup);
+  const dupEl = document.getElementById('infog-f1-dup');
+  if(dupEl) dupEl.className = 'infog-num ' + (dup > 0 ? 'red' : 'green');
+
+  const bar = document.getElementById('infog-prog-bar');
+  if(bar) bar.style.width = pct+'%';
+  se('infog-prog-label', lewatF1+' dari '+totalGab+' penumpang lewat F1');
+  se('infog-prog-pct',   pct+'%');
+}
+
+// F2: dari S.manifest lokal (sudah benar — F2 terkunci ke 1 kapal yang dipilih)
+function updateInfografisF2(){
   const total  = S.manifest.length;
   const naik   = S.manifest.filter(p=>p._status==='naik').length;
   const dermaga= S.manifest.filter(p=>p._status==='dermaga').length;
   const belum  = total - naik - dermaga;
-  const lewatF1= naik + dermaga; // sudah scan F1 = naik + di dermaga
   const dup    = S.dupAlerts.length;
   const pct    = total>0 ? Math.round(naik/total*100) : 0;
 
   const se = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
 
-  if(currentRole === 'f1'){
-    // F1: fokus pada yang lewat trestle
-    document.getElementById('infog-f1-stats').style.display='grid';
-    document.getElementById('infog-f2-stats').style.display='none';
-    document.getElementById('infog-title').textContent='🚪 Filter 1 — Gerbang Trestle';
-    se('infog-f1-lewat', lewatF1);
-    se('infog-f1-sisa',  belum);
-    se('infog-f1-dup',   dup);
-    // Warna merah hanya jika ada duplikat
-    const dupEl = document.getElementById('infog-f1-dup');
-    if(dupEl) dupEl.className = 'infog-num ' + (dup > 0 ? 'red' : 'green');
-  } else if(currentRole === 'f2'){
-    document.getElementById('infog-f1-stats').style.display='none';
-    document.getElementById('infog-f2-stats').style.display='grid';
-    document.getElementById('infog-title').textContent='⛵ Filter 2 — Tangga Kapal';
-    se('infog-f2-belum',   belum);
-    se('infog-f2-dermaga', dermaga);
-    se('infog-f2-naik',    naik);
+  document.getElementById('infog-f1-stats').style.display='none';
+  document.getElementById('infog-f2-stats').style.display='grid';
+  document.getElementById('infog-title').textContent='⛵ Filter 2 — Tangga Kapal';
+  se('infog-f2-belum',   belum);
+  se('infog-f2-dermaga', dermaga);
+  se('infog-f2-naik',    naik);
 
-    // Warna dinamis: belum masuk = amber jika ada, hijau jika 0
-    const belumEl = document.getElementById('infog-f2-belum');
-    if(belumEl) belumEl.className = 'infog-num ' + (belum > 0 ? 'amber' : 'green');
-    // Area dermaga = amber jika masih ada yang nunggu naik
-    const dermEl = document.getElementById('infog-f2-dermaga');
-    if(dermEl) dermEl.className = 'infog-num ' + (dermaga > 0 ? 'white' : 'green');
-  }
+  const belumEl = document.getElementById('infog-f2-belum');
+  if(belumEl) belumEl.className = 'infog-num ' + (belum > 0 ? 'amber' : 'green');
+  const dermEl = document.getElementById('infog-f2-dermaga');
+  if(dermEl) dermEl.className = 'infog-num ' + (dermaga > 0 ? 'white' : 'green');
 
-  // Progress bar
   const bar = document.getElementById('infog-prog-bar');
   if(bar) bar.style.width = pct+'%';
   se('infog-prog-label', naik+' dari '+total+' penumpang naik');
@@ -3540,10 +3575,23 @@ async function _lanjutSesiOtomatis(sesiList){
 }
 
 // Render dashboard multi-kapal
+let _renderDashLock = false;
 async function renderDashboardMultiKapal(){
   const container = document.getElementById('dashboard-kapal-list');
   if(!container) return;
 
+  // Cegah render bersamaan (race condition) yang menyebabkan flicker
+  if(_renderDashLock) return;
+  _renderDashLock = true;
+
+  try{
+    await _renderDashboardMultiKapalInner(container);
+  } finally {
+    _renderDashLock = false;
+  }
+}
+
+async function _renderDashboardMultiKapalInner(container){
   if(!S.kapalAktif.length){
     container.innerHTML = `
       <div style="text-align:center;padding:30px;color:var(--gray-400)">
@@ -4633,12 +4681,12 @@ function updateDashCounters(){
   const se=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
 
   if(currentRole === 'admin'){
-    const gabEl = document.getElementById('dash-gabungan');
+    // Admin: visibilitas & isi dash-gabungan SEPENUHNYA dikelola oleh
+    // renderDashboardMultiKapal() saja, agar tidak ada dua sumber yang
+    // saling menimpa display (mencegah flicker).
     const petEl = document.getElementById('dash-petugas');
-    // Ringkasan gabungan hanya relevan jika ada 2+ kapal aktif
-    if(gabEl) gabEl.style.display = S.kapalAktif && S.kapalAktif.length > 1 ? 'block' : 'none';
     if(petEl) petEl.style.display = 'none';
-    return; // Admin counter diisi oleh renderDashboardMultiKapal
+    return;
   }
 
   // Petugas: dari S.manifest lokal
