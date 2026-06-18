@@ -2085,7 +2085,6 @@ async function processTicket(ticketNo){
     showResult(status,name,info,gender,kategori,tujuan);
     return; // tunggu keputusan petugas
   }
-
   const entry={
     time     : timeStr,
     ticket   : ticketNo,
@@ -3040,7 +3039,7 @@ async function sbAddLog(entry){
   if(!sb) return;
   try{
     const sesiId = entry._sesiId || entry.sesiId || getSesiId();
-    await sb.from('scan_log').insert({
+    const { error } = await sb.from('scan_log').insert({
       sesi_id    : sesiId,
       waktu      : entry.time,
       no_tiket   : entry.ticket,
@@ -3052,6 +3051,7 @@ async function sbAddLog(entry){
       nama_kapal : entry.namaKapal || S.ship.name || '',
       voyage     : entry.voyage || S.ship.voyage || '',
     });
+    if(error) console.warn('[SB] addLog insert error:', error.message);
   }catch(e){ console.warn('[SB] addLog error:', e.message); }
 }
 
