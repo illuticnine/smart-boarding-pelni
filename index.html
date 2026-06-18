@@ -1971,16 +1971,18 @@ async function processTicket(ticketNo){
     l.ticket.toUpperCase()===ticketUp && (l.status==='OK'||l.status==='NAIK')
   );
 
-  // Penentuan apakah tiket sudah scan F1/F2 sebelumnya
+  // Penentuan apakah tiket sudah scan F1/F2 sebelumnya.
+  // BAIK F1 MAUPUN F2 harus cek ke Supabase, bukan scanLog lokal —
+  // karena F1 dan F2 berjalan di perangkat berbeda, scanLog lokal
+  // satu perangkat tidak tahu scan dari perangkat lain.
   let scannedAtF1, scannedAtF2;
-  if(S.currentPos==='F1' && pax && sb && paxSesiId){
-    // F1 multi-kapal: cek status REAL dari Supabase berdasarkan sesi tiket yang BENAR
-    // (scanLog lokal bisa bercampur/tidak lengkap antar sesi)
-    const cek = await sbCekDuplikat(paxSesiId, ticketUp, S.currentPos);
+  const cekSesiId = (S.currentPos==='F1') ? paxSesiId : (S.currentSesiId || paxSesiId);
+  if(sb && cekSesiId){
+    const cek = await sbCekDuplikat(cekSesiId, ticketUp, S.currentPos);
     scannedAtF1 = cek.f1;
     scannedAtF2 = cek.f2;
   } else {
-    // F2 atau offline: pakai scanLog lokal
+    // Offline saja: pakai scanLog lokal
     scannedAtF1 = prevScans.some(l=>l.pos==='F1');
     scannedAtF2 = prevScans.some(l=>l.pos==='F2');
   }
@@ -4047,14 +4049,22 @@ async function tampilkanPilihKapalF2(){
 }
 
 // Petugas F2 pilih kapal
-async function pilihKapalF2(sesiId, namaKapal, tipeKapal){
+async async function pilihKapalF2(sesiId, namaKapal, tipeKapal){
   closeModal('modal-pilih-kapal');
-  S.currentSesiId = sesiId;
-  S.ship = { name: namaKapal, route:'', voyage:'', time:'' };
-  S.shipType = tipeKapal;
-  saveState();
 
-  // ship-label dihandle oleh updateShipLabel()
+  // Ambil detail lengkap kapal dari daftar sesi aktif (voyage, rute, dermaga, jam)
+  const kapal = S.kapalAktif.find(k=>k.sesi_id===sesiId);
+
+  S.currentSesiId = sesiId;
+  S.ship = {
+    name   : namaKapal,
+    route  : kapal ? (kapal.rute||'') : '',
+    voyage : kapal ? (kapal.voyage||'') : '',
+    time   : kapal ? (kapal.jam_etd||'') : '',
+  };
+  S.shipType = (kapal && kapal.tipe_kapal) ? kapal.tipe_kapal : tipeKapal;
+  saveState();
+  setShipType(S.shipType);
 
   updateShipLabel();
   showToast(`✅ Terkunci ke ${namaKapal} · Siap scan tangga kapal`,'success');
