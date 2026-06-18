@@ -2546,6 +2546,27 @@ function applyRole(role){
   currentRole = role;
   const info = ROLE_INFO[role];
 
+  // ── BERSIHKAN SISA STATE DARI SESI/ROLE SEBELUMNYA ──────────
+  // Hentikan & bersihkan scanner kamera jika masih aktif
+  try{ if(qrScanner){ qrScanner.stop().catch(()=>{}); qrScanner.clear(); } }catch(e){}
+  qrScanner = null;
+  _scanBusy = false;
+  _keputusanPending = false;
+  _scanStarting = false;
+  lastScannedTicket = null;
+  // Bersihkan kotak hasil scan (notifikasi sisa dari role sebelumnya)
+  const rb = document.getElementById('result-box');
+  if(rb){ rb.style.display = 'none'; rb.innerHTML = ''; }
+  // Reset tampilan tombol scan ke kondisi awal
+  const bStart = document.getElementById('btn-start');
+  const bStop  = document.getElementById('btn-stop');
+  const qr      = document.getElementById('qr-reader');
+  const ph      = document.getElementById('scan-placeholder');
+  if(bStart) bStart.style.display = 'inline-flex';
+  if(bStop)  bStop.style.display  = 'none';
+  if(qr)     qr.style.display     = 'none';
+  if(ph)     ph.style.display     = 'flex';
+
   // Sembunyikan login screen
   document.getElementById('login-screen').style.display = 'none';
 
@@ -2704,6 +2725,17 @@ function logout(){
   stopDashAutoRefresh();       // Hentikan auto-refresh dashboard
   stopManifestAutoRefresh();   // Hentikan auto-refresh manifes
   stopPetugasStatusRefresh();  // Hentikan auto-refresh status petugas
+
+  // Bersihkan scanner & state scan agar tidak terbawa ke login berikutnya
+  try{ if(qrScanner){ qrScanner.stop().catch(()=>{}); qrScanner.clear(); } }catch(e){}
+  qrScanner = null;
+  _scanBusy = false;
+  _keputusanPending = false;
+  _scanStarting = false;
+  lastScannedTicket = null;
+  const rb = document.getElementById('result-box');
+  if(rb){ rb.style.display = 'none'; rb.innerHTML = ''; }
+
   currentRole = null;
   selectedLoginRole = null;
 
