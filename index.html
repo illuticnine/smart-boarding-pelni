@@ -2086,6 +2086,8 @@ async function processTicket(ticketNo){
     return; // tunggu keputusan petugas
   }
 
+  console.log('[CEK-SCAN] pos=', S.currentPos, '| pax._tipeKapal=', pax ? pax._tipeKapal : 'no-pax',
+    '| S.shipType=', S.shipType, '| akan pakai=', (pax && pax._tipeKapal) ? pax._tipeKapal : S.shipType);
   const entry={
     time     : timeStr,
     ticket   : ticketNo,
@@ -2745,6 +2747,11 @@ async function fetchManifesFromGS(){
   // (3) deteksi dari struktur data sebagai fallback terakhir.
   let tipeKapal = S.shipType || '';
   const kapalInfo = S.kapalAktif.find(k=>k.sesi_id===S.currentSesiId);
+  console.log('[CEK-TIPE] currentSesiId=', S.currentSesiId,
+    '| S.shipType=', S.shipType,
+    '| kapalAktif sesi_ids=', S.kapalAktif.map(k=>k.sesi_id),
+    '| kapalInfo found=', !!kapalInfo,
+    '| kapalInfo.tipe=', kapalInfo ? kapalInfo.tipe_kapal : 'N/A');
   if(kapalInfo && kapalInfo.tipe_kapal){
     tipeKapal = kapalInfo.tipe_kapal;   // sumber paling akurat
   }
