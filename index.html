@@ -1751,25 +1751,64 @@ function setScanMode(m){
 // CAMERA SCANNER
 // ══════════════════════════════════════════
 let qrScanner = null;
-function startCameraScan(){
+let _scanStarting = false;
+let _scanBusy = false;            // true saat processTicket sedang jalan
+let _keputusanPending = false;    // true saat layar keputusan F1 menunggu aksi petugas
+async function startCameraScan(){
+  if(_scanStarting) return;     // cegah double-tap
+  _scanStarting = true;
+
+  // Bersihkan scanner lama dulu jika masih ada (mencegah konflik instance)
+  if(qrScanner){
+    try{ await qrScanner.stop(); }catch(e){}
+    try{ qrScanner.clear(); }catch(e){}
+    qrScanner = null;
+  }
+
   document.getElementById('scan-placeholder').style.display='none';
   document.getElementById('qr-reader').style.display='block';
   document.getElementById('btn-start').style.display='none';
   document.getElementById('btn-stop').style.display='inline-flex';
-  qrScanner = new Html5Qrcode('qr-reader');
+
+  try{
+    qrScanner = new Html5Qrcode('qr-reader');
+  }catch(e){
+    showToast('Gagal inisialisasi kamera · coba lagi','error');
+    _scanStarting = false;
+    stopCameraScan();
+    return;
+  }
+  let _scanBusy = false;
   qrScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:230,height:230}},
-    (txt)=>{
-      processTicket(txt.trim());
-      qrScanner.pause(true);
-      setTimeout(()=>{ try{qrScanner.resume();}catch(e){} },2500);
+    async (txt)=>{
+      if(_scanBusy || _keputusanPending) return;  // jangan proses scan baru saat sibuk / menunggu keputusan
+      _scanBusy = true;
+      try{ qrScanner.pause(true); }catch(e){}
+      try{
+        await processTicket(txt.trim());   // TUNGGU selesai (termasuk query Supabase)
+      }catch(e){ console.warn('processTicket error:', e); }
+      _scanBusy = false;
+      // Jika ada layar keputusan menunggu, JANGAN resume — biarkan petugas menekan tombol dulu.
+      // Resume akan dilakukan oleh fungsi keputusan setelah selesai.
+      if(!_keputusanPending){
+        setTimeout(()=>{
+          try{ if(qrScanner) qrScanner.resume(); }catch(e){}
+        }, 1500);
+      }
     },()=>{}
-  ).catch(err=>{
-    showToast('Kamera tidak bisa diakses','error');
+  ).then(()=>{
+    _scanStarting = false;
+  }).catch(err=>{
+    _scanStarting = false;
+    showToast('Kamera tidak bisa diakses · '+(err.message||''),'error');
     stopCameraScan();
   });
 }
 function stopCameraScan(){
-  if(qrScanner){ qrScanner.stop().then(()=>{ qrScanner.clear(); qrScanner=null; }).catch(()=>{}); }
+  if(qrScanner){ qrScanner.stop().then(()=>{ qrScanner.clear(); qrScanner=null; }).catch(()=>{ qrScanner=null; }); }
+  _scanBusy = false;
+  _keputusanPending = false;
+  _scanStarting = false;
   document.getElementById('scan-placeholder').style.display='flex';
   document.getElementById('qr-reader').style.display='none';
   document.getElementById('btn-start').style.display='inline-flex';
@@ -1824,9 +1863,16 @@ function manualCheck(){
 // CORE: PROCESS TICKET
 // ══════════════════════════════════════════
 async function processTicket(ticketNo){
+  // Jika ada layar keputusan F1 yang masih menunggu aksi petugas,
+  // jangan proses tiket baru dulu (cegah layar keputusan tertimpa)
+  if(_keputusanPending){
+    showToast('⏳ Selesaikan keputusan tiket sebelumnya dulu','warning');
+    return;
+  }
   const now = new Date();
   const timeStr = now.toLocaleTimeString('id-ID',{hour12:false});
-  const ticketUp = ticketNo.toUpperCase().trim();
+  const ticketUp = (ticketNo||'').toString().toUpperCase().trim();
+  if(!ticketUp) return;
 
   let pax = null;
   let paxSesiId = S.currentSesiId;
@@ -2008,6 +2054,7 @@ async function processTicket(ticketNo){
   const butuhKeputusan = (status==='CEK_SUDAH_NAIK' || status==='CEK_LANJUTAN');
 
   if(butuhKeputusan){
+    _keputusanPending = true;   // kunci scanner sampai petugas menekan tombol keputusan
     showResult(status,name,info,gender,kategori,tujuan);
     return; // tunggu keputusan petugas
   }
@@ -2124,7 +2171,12 @@ function showResult(status,name,info,gender,kategori,tujuan){
                background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🚨 Tahan
       </button>
-    </div>`;
+    </div>
+    <button onclick="tutupHasilScan()"
+      style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
+             border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
+      Lewati tanpa keputusan
+    </button>`;
 
   } else if(status==='CEK_LANJUTAN'){
     // Tiket tidak ada di manifes → keputusan: penumpang lanjutan vs tahan
@@ -2148,7 +2200,12 @@ function showResult(status,name,info,gender,kategori,tujuan){
                background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🚨 Tahan
       </button>
-    </div>`;
+    </div>
+    <button onclick="tutupHasilScan()"
+      style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
+             border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
+      Lewati tanpa keputusan
+    </button>`;
   }
 
   box.innerHTML=`
@@ -4361,6 +4418,9 @@ function tutupHasilScan(){
     box.style.display = 'none';
     box.innerHTML = '';
   }
+  // Lepas kunci keputusan & lanjutkan scanner
+  _keputusanPending = false;
+  try{ if(qrScanner) qrScanner.resume(); }catch(e){}
 }
 
 // Izinkan tiket keluar sementara (transit/ambil barang) — boleh masuk lagi tanpa flag
