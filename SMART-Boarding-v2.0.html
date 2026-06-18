@@ -4317,6 +4317,15 @@ function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
 let lastScannedTicket = '';
 
 // Catat penumpang lanjutan secara manual ke log dan Database
+// Tutup/sembunyikan layar hasil scan agar petugas siap scan berikutnya
+function tutupHasilScan(){
+  const box = document.getElementById('result-box');
+  if(box){
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+}
+
 // Izinkan tiket keluar sementara (transit/ambil barang) — boleh masuk lagi tanpa flag
 function izinkanKeluarSementara(ticket, name){
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
@@ -4350,19 +4359,21 @@ function izinkanKeluarSementara(ticket, name){
   saveState();
   sbAddLog({...entry, _sesiId: entry.sesiId});
 
-  // Update tombol jadi konfirmasi
+  // Ganti isi result box jadi konfirmasi, lalu tutup otomatis
   const box = document.getElementById('result-box');
   if(box){
-    const btns = box.querySelectorAll('button');
-    btns.forEach(b=>b.disabled=true);
-    const okBtn = box.querySelector('[onclick^="izinkanKeluarSementara"]');
-    if(okBtn){
-      okBtn.textContent = '✅ Izin Diberikan';
-      okBtn.style.background = 'var(--green)';
-    }
+    box.className = 'result-box transit';
+    box.innerHTML = `
+      <div class="r-icon">🔄</div>
+      <div class="r-status" style="color:var(--amber)">IZIN KELUAR DIBERIKAN</div>
+      <div class="r-name">${name||'—'}</div>
+      <div class="r-info">Tiket boleh masuk lagi · Tercatat di log</div>`;
   }
   showToast('✅ Izin keluar sementara diberikan · Tiket boleh masuk lagi','success');
   renderLog();
+
+  // Tutup layar hasil otomatis setelah 2 detik
+  setTimeout(()=>{ tutupHasilScan(); }, 2000);
 }
 
 // Tahan tiket yang mencurigakan — catat sebagai pelanggaran
@@ -4397,19 +4408,23 @@ function tahanTiket(ticket, name, alasan){
   saveState();
   sbAddLog({...entry, _sesiId: entry.sesiId});
 
+  // Ganti seluruh isi result box jadi konfirmasi singkat, lalu tutup otomatis
   const box = document.getElementById('result-box');
   if(box){
-    const btns = box.querySelectorAll('button');
-    btns.forEach(b=>b.disabled=true);
-    const tahanBtn = box.querySelector('[onclick^="tahanTiket"]');
-    if(tahanBtn){
-      tahanBtn.textContent = '🚨 Ditahan & Dicatat';
-    }
+    box.className = 'result-box dup';
+    box.innerHTML = `
+      <div class="r-icon">🚨</div>
+      <div class="r-status" style="color:var(--red)">TIKET DITAHAN & DICATAT</div>
+      <div class="r-name">${name||'—'}</div>
+      <div class="r-info">Pelanggaran tercatat di log · Siap scan berikutnya</div>`;
   }
   showToast('🚨 Tiket ditahan & dicatat sebagai pelanggaran','error');
   vib([300,100,300]);
   updateInfografis();
   renderLog();
+
+  // Tutup layar hasil otomatis setelah 2 detik
+  setTimeout(()=>{ tutupHasilScan(); }, 2000);
 }
 
 function catatPenumpangLanjutan(ticket){
@@ -4439,13 +4454,17 @@ function catatPenumpangLanjutan(ticket){
     showToast('✅ Tercatat secara lokal · Gagal sync ke database','warning');
   });
 
-  // Update result box - ubah tombol jadi konfirmasi
-  const btn = document.querySelector('[onclick^="catatPenumpangLanjutan"]');
-  if(btn){
-    btn.textContent = '✅ Sudah Dicatat — Izinkan Masuk';
-    btn.style.background = 'var(--green)';
-    btn.disabled = true;
+  // Ganti isi result box jadi konfirmasi, lalu tutup otomatis
+  const box = document.getElementById('result-box');
+  if(box){
+    box.className = 'result-box transit';
+    box.innerHTML = `
+      <div class="r-icon">✅</div>
+      <div class="r-status" style="color:var(--green)">PENUMPANG LANJUTAN DICATAT</div>
+      <div class="r-name">Tiket ${ticket}</div>
+      <div class="r-info">Diizinkan masuk · Tercatat sebagai lanjutan</div>`;
   }
+  setTimeout(()=>{ tutupHasilScan(); }, 2000);
 }
 
 // ══════════════════════════════════════════
