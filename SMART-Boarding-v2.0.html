@@ -1891,13 +1891,14 @@ async function processTicket(ticketNo){
       if(sbPax){
         paxSesiId = sbPax.sesi_id;   // ← sesi yang BENAR sesuai tiket
         paxKapal  = sbPax.nama_kapal;
-        // Lengkapi voyage & tipe dari data sesi aktif (tabel manifes tak punya kolom voyage)
+        // Lengkapi voyage dari data sesi (tabel manifes tak punya kolom voyage).
+        // tipe_kapal & nama_kapal: utamakan dari tabel manifes (sbPax) karena
+        // itu sumber kebenaran per-tiket. Sesi hanya untuk melengkapi voyage.
         const kapalInfo = S.kapalAktif.find(k=>k.sesi_id===sbPax.sesi_id);
-        if(kapalInfo){
-          sbPax.voyage     = kapalInfo.voyage || '';
-          sbPax.tipe_kapal = sbPax.tipe_kapal || kapalInfo.tipe_kapal || '';
-          if(!paxKapal) paxKapal = kapalInfo.nama_kapal;
-        }
+        sbPax.voyage = (kapalInfo && kapalInfo.voyage) ? kapalInfo.voyage : (sbPax.voyage || '');
+        // tipe_kapal milik tiket (dari tabel manifes); jika kosong baru pakai sesi
+        if(!sbPax.tipe_kapal && kapalInfo) sbPax.tipe_kapal = kapalInfo.tipe_kapal || '';
+        if(!paxKapal) paxKapal = sbPax.nama_kapal || (kapalInfo ? kapalInfo.nama_kapal : '');
         pax = {
           'No Tiket'    : sbPax.no_tiket,
           'Nama Pnp'    : sbPax.nama,
@@ -1927,6 +1928,21 @@ async function processTicket(ticketNo){
     // tidak pernah dari kapal aktif perangkat. Mencegah sesi_id tercatat keliru.
     if(pax && pax._sesiId){
       paxSesiId = pax._sesiId;
+    }
+    // Jaring pengaman: jika tipe kapal masih kosong, ambil dari tabel sesi_kapal
+    if(pax && !pax._tipeKapal && sb && paxSesiId){
+      try{
+        const { data: sk } = await sb.from('sesi_kapal')
+          .select('tipe_kapal,nama_kapal,voyage')
+          .eq('sesi_id', paxSesiId)
+          .limit(1)
+          .single();
+        if(sk){
+          pax._tipeKapal = sk.tipe_kapal || '';
+          if(!paxKapal) paxKapal = sk.nama_kapal || '';
+          if(!pax._voyage) pax._voyage = sk.voyage || '';
+        }
+      }catch(e){}
     }
   } else {
     // F2 terkunci ke 1 kapal — cari di manifes lokal kapal yang dipilih
@@ -2077,7 +2093,7 @@ async function processTicket(ticketNo){
     info,
     gender,
     kategori,
-    shipType : paxKapal ? (pax && pax._tipeKapal ? pax._tipeKapal : S.shipType) : S.shipType,
+    shipType : (pax && pax._tipeKapal) ? pax._tipeKapal : S.shipType,
     sesiId   : paxSesiId || S.currentSesiId || getSesiId(),
     // Untuk F1 multi-kapal: nama kapal & voyage IKUT TIKET, bukan kapal aktif perangkat
     namaKapal: paxKapal || S.ship.name || '',
