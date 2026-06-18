@@ -4045,11 +4045,10 @@ async function tampilkanPilihKapalF2(){
     </button>
   `).join('');
   openModal('modal-pilih-kapal');
-  const m = document.getElementById('modal-pilih-kapal');
 }
 
 // Petugas F2 pilih kapal
-async async function pilihKapalF2(sesiId, namaKapal, tipeKapal){
+async function pilihKapalF2(sesiId, namaKapal, tipeKapal){
   closeModal('modal-pilih-kapal');
 
   // Ambil detail lengkap kapal dari daftar sesi aktif (voyage, rute, dermaga, jam)
