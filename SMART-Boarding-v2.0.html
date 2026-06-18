@@ -1828,35 +1828,57 @@ async function processTicket(ticketNo){
   const timeStr = now.toLocaleTimeString('id-ID',{hour12:false});
   const ticketUp = ticketNo.toUpperCase().trim();
 
-  // Cari di manifest lokal dulu (cepat)
-  let pax = S.manifest.find(p=>{
-    const t = (p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
-    return t===ticketUp;
-  });
-
-  // Jika F1 dan tidak ketemu di manifest lokal, cari di Supabase semua sesi aktif
+  let pax = null;
   let paxSesiId = S.currentSesiId;
   let paxKapal  = null;
-  if(!pax && S.currentPos==='F1' && S.kapalAktif.length > 0){
-    const sbPax = await sbFindTiket(ticketUp);
-    if(sbPax){
-      paxSesiId = sbPax.sesi_id;
-      paxKapal  = sbPax.nama_kapal;
-      // Buat objek pax sementara dari data Supabase
-      pax = {
-        'No Tiket'    : sbPax.no_tiket,
-        'Nama Pnp'    : sbPax.nama,
-        NO_TIKET      : sbPax.no_tiket,
-        NAMA          : sbPax.nama,
-        KELAS         : sbPax.kelas,
-        KATEGORI      : sbPax.kategori,
-        'Jen. Kelamin': sbPax.jen_kelamin,
-        'Pel. Tujuan' : sbPax.tujuan,
-        'Nama Kapal'  : sbPax.nama_kapal,
-        _status       : sbPax.status || 'pending',
-        _sesiId       : sbPax.sesi_id,
-      };
+
+  if(S.currentPos==='F1'){
+    // F1 melayani MULTI-KAPAL. Sesi tiket TIDAK boleh diasumsikan dari
+    // S.currentSesiId atau manifes lokal — harus selalu ditentukan dari
+    // tiket itu sendiri via Supabase (lintas semua sesi aktif).
+    if(S.kapalAktif.length > 0){
+      const sbPax = await sbFindTiket(ticketUp);
+      if(sbPax){
+        paxSesiId = sbPax.sesi_id;   // ← sesi yang BENAR sesuai tiket
+        paxKapal  = sbPax.nama_kapal;
+        // Lengkapi voyage & tipe dari data sesi aktif (tabel manifes tak punya kolom voyage)
+        const kapalInfo = S.kapalAktif.find(k=>k.sesi_id===sbPax.sesi_id);
+        if(kapalInfo){
+          sbPax.voyage     = kapalInfo.voyage || '';
+          sbPax.tipe_kapal = sbPax.tipe_kapal || kapalInfo.tipe_kapal || '';
+          if(!paxKapal) paxKapal = kapalInfo.nama_kapal;
+        }
+        pax = {
+          'No Tiket'    : sbPax.no_tiket,
+          'Nama Pnp'    : sbPax.nama,
+          NO_TIKET      : sbPax.no_tiket,
+          NAMA          : sbPax.nama,
+          KELAS         : sbPax.kelas,
+          KATEGORI      : sbPax.kategori,
+          'Jen. Kelamin': sbPax.jen_kelamin,
+          'Pel. Tujuan' : sbPax.tujuan,
+          'Pel. Awal'   : sbPax.asal,
+          'Nama Kapal'  : sbPax.nama_kapal,
+          _status       : sbPax.status || 'pending',
+          _sesiId       : sbPax.sesi_id,
+          _voyage       : sbPax.voyage || '',
+          _tipeKapal    : sbPax.tipe_kapal || '',
+        };
+      }
     }
+    // Fallback: jika Supabase tidak tersedia, baru pakai manifes lokal
+    if(!pax && !sb){
+      pax = S.manifest.find(p=>{
+        const t = (p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+        return t===ticketUp;
+      }) || null;
+    }
+  } else {
+    // F2 terkunci ke 1 kapal — cari di manifes lokal kapal yang dipilih
+    pax = S.manifest.find(p=>{
+      const t = (p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+      return t===ticketUp;
+    }) || null;
   }
 
   // Jika F2 dan pax bukan kapal yang dipilih → alert salah kapal
@@ -1873,12 +1895,24 @@ async function processTicket(ticketNo){
     t.ticket.toUpperCase()===ticketUp && !t.returned
   );
 
-  // Riwayat scan sebelumnya
+  // Riwayat scan lokal (dipakai untuk info waktu scan terakhir di pesan)
   const prevScans = S.scanLog.filter(l=>
     l.ticket.toUpperCase()===ticketUp && (l.status==='OK'||l.status==='NAIK')
   );
-  const scannedAtF1 = prevScans.some(l=>l.pos==='F1');
-  const scannedAtF2 = prevScans.some(l=>l.pos==='F2');
+
+  // Penentuan apakah tiket sudah scan F1/F2 sebelumnya
+  let scannedAtF1, scannedAtF2;
+  if(S.currentPos==='F1' && pax && sb && paxSesiId){
+    // F1 multi-kapal: cek status REAL dari Supabase berdasarkan sesi tiket yang BENAR
+    // (scanLog lokal bisa bercampur/tidak lengkap antar sesi)
+    const cek = await sbCekDuplikat(paxSesiId, ticketUp, S.currentPos);
+    scannedAtF1 = cek.f1;
+    scannedAtF2 = cek.f2;
+  } else {
+    // F2 atau offline: pakai scanLog lokal
+    scannedAtF1 = prevScans.some(l=>l.pos==='F1');
+    scannedAtF2 = prevScans.some(l=>l.pos==='F2');
+  }
 
   // Cek apakah tiket ini sudah diizinkan keluar sementara oleh petugas (boleh naik lagi)
   const izinAktif = S.izinKeluar.find(z=>
@@ -1979,16 +2013,19 @@ async function processTicket(ticketNo){
   }
 
   const entry={
-    time    : timeStr,
-    ticket  : ticketNo,
+    time     : timeStr,
+    ticket   : ticketNo,
     name,
-    pos     : S.currentPos,
+    pos      : S.currentPos,
     status,
     info,
     gender,
     kategori,
-    shipType: paxKapal ? 'multi' : S.shipType,
-    sesiId  : paxSesiId || S.currentSesiId || getSesiId(),
+    shipType : paxKapal ? (pax && pax._tipeKapal ? pax._tipeKapal : S.shipType) : S.shipType,
+    sesiId   : paxSesiId || S.currentSesiId || getSesiId(),
+    // Untuk F1 multi-kapal: nama kapal & voyage IKUT TIKET, bukan kapal aktif perangkat
+    namaKapal: paxKapal || S.ship.name || '',
+    voyage   : (pax && pax._voyage) ? pax._voyage : (S.ship.voyage || ''),
   };
   S.scanLog.unshift(entry);
   if(S.scanLog.length>500) S.scanLog.pop();
@@ -2915,8 +2952,8 @@ async function sbAddLog(entry){
       status     : entry.status,
       info       : entry.info || '',
       tipe_kapal : entry.shipType || S.shipType,
-      nama_kapal : S.ship.name || '',
-      voyage     : S.ship.voyage || '',
+      nama_kapal : entry.namaKapal || S.ship.name || '',
+      voyage     : entry.voyage || S.ship.voyage || '',
     });
   }catch(e){ console.warn('[SB] addLog error:', e.message); }
 }
