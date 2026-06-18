@@ -1882,7 +1882,11 @@ async function processTicket(ticketNo){
     // F1 melayani MULTI-KAPAL. Sesi tiket TIDAK boleh diasumsikan dari
     // S.currentSesiId atau manifes lokal — harus selalu ditentukan dari
     // tiket itu sendiri via Supabase (lintas semua sesi aktif).
-    if(S.kapalAktif.length > 0){
+    // Pastikan daftar kapal aktif fresh (jaga-jaga ada kapal baru sejak login)
+    if(sb && S.kapalAktif.length === 0){
+      try{ await refreshKapalAktif(); }catch(e){}
+    }
+    if(sb){
       const sbPax = await sbFindTiket(ticketUp);
       if(sbPax){
         paxSesiId = sbPax.sesi_id;   // ← sesi yang BENAR sesuai tiket
@@ -1918,6 +1922,11 @@ async function processTicket(ticketNo){
         const t = (p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
         return t===ticketUp;
       }) || null;
+    }
+    // PENEGASAN: untuk F1, sesi tiket SELALU dari data tiket (pax._sesiId),
+    // tidak pernah dari kapal aktif perangkat. Mencegah sesi_id tercatat keliru.
+    if(pax && pax._sesiId){
+      paxSesiId = pax._sesiId;
     }
   } else {
     // F2 terkunci ke 1 kapal — cari di manifes lokal kapal yang dipilih
@@ -3583,18 +3592,40 @@ async function sbSelesaiKapal(sesiId){
 // Cari tiket di SEMUA sesi aktif (untuk F1)
 async function sbFindTiket(noTiket){
   if(!sb) return null;
+  const tiketBersih = (noTiket||'').toString().trim();
+  if(!tiketBersih) return null;
   const sesiAktif = S.kapalAktif.map(k=>k.sesi_id);
-  if(!sesiAktif.length) return null;
+
   try{
-    const { data, error } = await sb.from('manifes')
+    // Strategi 1: cari dalam sesi aktif dulu (paling relevan)
+    if(sesiAktif.length){
+      const r1 = await sb.from('manifes')
+        .select('*')
+        .eq('no_tiket', tiketBersih)
+        .in('sesi_id', sesiAktif);
+      if(r1.data && r1.data.length){
+        if(r1.data.length > 1){
+          console.warn('[SB] Tiket '+tiketBersih+' ada di >1 sesi aktif:', r1.data.map(d=>d.sesi_id));
+        }
+        return r1.data[0];   // sesi_id baris ini = sesi milik tiket (dari tabel manifes)
+      }
+    }
+
+    // Strategi 2 (jaring pengaman): cari LINTAS SEMUA sesi di tabel manifes,
+    // tanpa dibatasi kapalAktif. Tiket di tabel manifes selalu punya sesi_id sendiri.
+    const r2 = await sb.from('manifes')
       .select('*')
-      .eq('no_tiket', noTiket.trim())
-      .in('sesi_id', sesiAktif)
-      .limit(1)
-      .single();
-    if(error) return null;
-    return data;
-  }catch(e){ return null; }
+      .eq('no_tiket', tiketBersih)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if(r2.data && r2.data.length){
+      console.warn('[SB] Tiket '+tiketBersih+' tidak ada di sesi aktif, '+
+                   'ditemukan di sesi: '+r2.data[0].sesi_id);
+      return r2.data[0];
+    }
+
+    return null;
+  }catch(e){ console.warn('[SB] findTiket catch:', e.message); return null; }
 }
 
 // Cek scan duplikat untuk satu tiket di satu sesi
