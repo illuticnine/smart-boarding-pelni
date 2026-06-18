@@ -1584,6 +1584,7 @@ let S = {
   scanLog: [],
   transitLog: [],
   lanjutanLog: [],
+  izinKeluar: [],   // tiket yang diizinkan petugas keluar sementara (transit/ambil barang), boleh naik lagi
   dupAlerts: [],
   logFilter: 'all',
   manifestPage: 1,        // halaman tabel manifes saat ini
@@ -1602,9 +1603,13 @@ function loadState(){
     if(s){
       const saved=JSON.parse(s);
       S={...S,...saved};
-      if(S.scanLog && S.scanLog.some(l=>!['OK','NAIK','DUPLIKAT','TRANSIT','PERHATIAN','TIDAK DIKENAL'].includes(l.status))){
+      const validStatuses=['OK','NAIK','DUPLIKAT','TRANSIT','PERHATIAN','TIDAK DIKENAL','IZIN_KELUAR','DITAHAN','CEK_SUDAH_NAIK','CEK_LANJUTAN'];
+      if(S.scanLog && S.scanLog.some(l=>!validStatuses.includes(l.status))){
         S.scanLog=[]; S.dupAlerts=[];
       }
+      // Pastikan array baru ter-init untuk data lama
+      if(!Array.isArray(S.izinKeluar)) S.izinKeluar=[];
+      if(!Array.isArray(S.lanjutanLog)) S.lanjutanLog=[];
     }
   }catch(e){}
   // GS_APPS_SCRIPT_URL konstanta SELALU override localStorage
@@ -1875,32 +1880,55 @@ async function processTicket(ticketNo){
   const scannedAtF1 = prevScans.some(l=>l.pos==='F1');
   const scannedAtF2 = prevScans.some(l=>l.pos==='F2');
 
+  // Cek apakah tiket ini sudah diizinkan keluar sementara oleh petugas (boleh naik lagi)
+  const izinAktif = S.izinKeluar.find(z=>
+    z.ticket.toUpperCase()===ticketUp && !z.used
+  );
+
   let status, name, info, gender='', kategori='', tujuan='';
 
-  if(!pax && !trEntry){
-    // Tidak ada di manifes
-    status='TIDAK DIKENAL'; name='—'; info='Nomor tiket tidak ada dalam manifes';
-
-  } else if(trEntry){
-    // Penumpang transit kembali
+  if(trEntry){
+    // Penumpang transit kembali (dari tab Transit / fitur lama)
     status='TRANSIT';
     name=trEntry.name||(pax?getName(pax):'—');
     info='Penumpang transit kembali · Keluar sejak '+trEntry.outTime;
     trEntry.returned=true;
     trEntry.returnTime=timeStr;
 
+  } else if(S.currentPos==='F1' && izinAktif){
+    // ✅ KASUS 3: Tiket sudah diizinkan keluar sementara → kembali masuk = LOLOS
+    status='TRANSIT'; name=getName(pax)||izinAktif.name||'—';
+    info='Kembali masuk · Diizinkan keluar pukul '+izinAktif.time+' oleh petugas';
+    izinAktif.used = true;
+    izinAktif.returnTime = timeStr;
+
+  } else if(S.currentPos==='F1' && !pax){
+    // ⚠️ KASUS 2: Scan F1 tapi tiket TIDAK ADA di manifes sesi ini
+    // Bisa penumpang lanjutan/transit dari pelabuhan sebelumnya, ATAU tiket operan/palsu
+    // → Butuh KEPUTUSAN petugas (jangan loloskan diam-diam)
+    status='CEK_LANJUTAN'; name='—';
+    info='Tiket tidak ada di manifes pelabuhan ini · Verifikasi: penumpang lanjutan atau tiket tidak sah?';
+
+  } else if(S.currentPos==='F1' && scannedAtF2){
+    // ⚠️ KASUS 1: Tiket SUDAH NAIK kapal, kok scan lagi di trestle?
+    // Modus utama: sudah naik → turun → oper tiket ke orang lain
+    // → Butuh KEPUTUSAN petugas
+    const lastF2=prevScans.filter(l=>l.pos==='F2').pop();
+    status='CEK_SUDAH_NAIK'; name=getName(pax);
+    info='Penumpang ini SUDAH tercatat NAIK kapal pukul '+(lastF2?lastF2.time:'-')+' · Kenapa scan lagi di trestle?';
+
+  } else if(S.currentPos==='F1' && scannedAtF1){
+    // ⚠️ Scan F1 lagi (sudah di dermaga, belum naik) tanpa izin keluar
+    const lastF1=prevScans.filter(l=>l.pos==='F1').pop();
+    status='DUPLIKAT'; name=getName(pax);
+    info='Sudah di-scan Filter 1 pukul '+lastF1.time+' · Belum ada izin keluar · Curiga joki tiket!';
+    S.dupAlerts.unshift({ticket:ticketNo,name,time:timeStr,pos:S.currentPos,prevPos:'F1'});
+    if(S.dupAlerts.length>30) S.dupAlerts.pop();
+
   } else if(S.currentPos==='F2' && scannedAtF1 && !scannedAtF2){
     // ✅ ALUR NORMAL: sudah scan F1, sekarang scan F2 = NAIK KAPAL
     status='NAIK'; name=getName(pax);
     info='Penumpang naik ke kapal · Sudah melewati Filter 1';
-
-  } else if(S.currentPos==='F1' && scannedAtF1){
-    // ⚠️ Scan F1 lagi setelah sebelumnya sudah scan F1
-    const lastF1=prevScans.filter(l=>l.pos==='F1').pop();
-    status='DUPLIKAT'; name=getName(pax);
-    info='Sudah di-scan di Filter 1 pukul '+lastF1.time+' · Curiga joki tiket!';
-    S.dupAlerts.unshift({ticket:ticketNo,name,time:timeStr,pos:S.currentPos,prevPos:'F1'});
-    if(S.dupAlerts.length>30) S.dupAlerts.pop();
 
   } else if(S.currentPos==='F2' && scannedAtF2){
     // ⚠️ Scan F2 lagi setelah sudah naik (duplikat di F2)
@@ -1911,9 +1939,14 @@ async function processTicket(ticketNo){
     if(S.dupAlerts.length>30) S.dupAlerts.pop();
 
   } else if(S.currentPos==='F2' && !scannedAtF1){
-    // ⚠️ Langsung ke F2 tanpa lewat F1 — curigai (tapi bisa juga legitimate)
+    // ⚠️ Langsung ke F2 tanpa lewat F1 — curigai
     status='PERHATIAN'; name=getName(pax);
     info='Belum terdeteksi di Filter 1 · Periksa identitas penumpang';
+
+  } else if(!pax){
+    // F2 dan tiket tidak dikenal
+    status='TIDAK DIKENAL'; name='—'; info='Nomor tiket tidak ada dalam manifes';
+
   } else {
     // ✅ SCAN PERTAMA di F1 (kondisi normal — penumpang baru masuk)
     status='OK'; name=getName(pax);
@@ -1933,7 +1966,18 @@ async function processTicket(ticketNo){
     }
   }
 
-  lastScannedTicket = ticketNo; // untuk tombol catat penumpang lanjutan
+  lastScannedTicket = ticketNo; // untuk tombol keputusan petugas
+
+  // Status yang BUTUH KEPUTUSAN petugas: jangan catat dulu ke log.
+  // Pencatatan terjadi saat petugas menekan tombol keputusan
+  // (izinkanKeluarSementara / tahanTiket / catatPenumpangLanjutan).
+  const butuhKeputusan = (status==='CEK_SUDAH_NAIK' || status==='CEK_LANJUTAN');
+
+  if(butuhKeputusan){
+    showResult(status,name,info,gender,kategori,tujuan);
+    return; // tunggu keputusan petugas
+  }
+
   const entry={
     time    : timeStr,
     ticket  : ticketNo,
@@ -1994,6 +2038,14 @@ function showResult(status,name,info,gender,kategori,tujuan){
     cls='transit';icon='⚠️';
     label='PERHATIAN — BELUM LEWAT FILTER 1';
     col='var(--amber)';vib([150,50,150]);
+  } else if(status==='CEK_SUDAH_NAIK'){
+    cls='dup';icon='🛑';
+    label='SUDAH NAIK KAPAL — VERIFIKASI!';
+    col='#E65100';vib([200,100,200,100,200]);
+  } else if(status==='CEK_LANJUTAN'){
+    cls='transit';icon='🔍';
+    label='TIDAK DI MANIFES — VERIFIKASI!';
+    col='#6A1B9A';vib([150,80,150]);
   } else{
     cls='unknown';icon='❓';
     label='TIDAK DIKENAL';
@@ -2010,8 +2062,57 @@ function showResult(status,name,info,gender,kategori,tujuan){
 
   box.className='result-box '+cls;
 
-  // Konten khusus untuk TIDAK DIKENAL di F1: kemungkinan penumpang lanjutan
-  const isUnknownF1 = (status==='TIDAK DIKENAL' && S.currentPos==='F1');
+  // Blok tombol keputusan untuk status yang butuh verifikasi petugas
+  let decisionBlock = '';
+
+  if(status==='CEK_SUDAH_NAIK'){
+    // Tiket sudah NAIK, scan lagi di F1 → keputusan: keluar sementara vs tahan
+    decisionBlock = `
+    <div style="margin:12px 0 8px;padding:10px 12px;background:rgba(230,81,0,.1);border-radius:8px;text-align:left">
+      <div style="font-size:12px;font-weight:700;color:#E65100;margin-bottom:6px">🛑 Penumpang Sudah Tercatat Naik</div>
+      <div style="font-size:11px;color:var(--gray-700);line-height:1.7">
+        Verifikasi identitas penumpang (KTP + tiket).<br>
+        Jika ingin keluar sementara (ambil barang/transit) lalu naik lagi → izinkan.<br>
+        Jika identitas tidak cocok / mencurigakan → tahan.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button onclick="izinkanKeluarSementara('${lastScannedTicket}','${(name||'').replace(/'/g,'')}')"
+        style="flex:1;padding:11px;border:none;border-radius:8px;
+               background:var(--amber);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+        🔄 Izinkan Keluar Sementara
+      </button>
+      <button onclick="tahanTiket('${lastScannedTicket}','${(name||'').replace(/'/g,'')}','SUDAH_NAIK')"
+        style="flex:1;padding:11px;border:none;border-radius:8px;
+               background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+        🚨 Tahan
+      </button>
+    </div>`;
+
+  } else if(status==='CEK_LANJUTAN'){
+    // Tiket tidak ada di manifes → keputusan: penumpang lanjutan vs tahan
+    decisionBlock = `
+    <div style="margin:12px 0 8px;padding:10px 12px;background:rgba(106,27,154,.1);border-radius:8px;text-align:left">
+      <div style="font-size:12px;font-weight:700;color:#6A1B9A;margin-bottom:6px">🔍 Tiket Tidak Ada di Manifes Pelabuhan Ini</div>
+      <div style="font-size:11px;color:var(--gray-700);line-height:1.7">
+        Bisa jadi penumpang lanjutan dari pelabuhan sebelumnya.<br>
+        Verifikasi <b>identitas (KTP)</b> + <b>tiket lanjutan</b> yang sah.<br>
+        Jika cocok → catat sebagai lanjutan. Jika tidak → tahan.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button onclick="catatPenumpangLanjutan('${lastScannedTicket}')"
+        style="flex:1;padding:11px;border:none;border-radius:8px;
+               background:#6A1B9A;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+        🔄 Penumpang Lanjutan
+      </button>
+      <button onclick="tahanTiket('${lastScannedTicket}','—','TAK_DIKENAL')"
+        style="flex:1;padding:11px;border:none;border-radius:8px;
+               background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+        🚨 Tahan
+      </button>
+    </div>`;
+  }
 
   box.innerHTML=`
     <div class="r-icon">${icon}</div>
@@ -2019,20 +2120,7 @@ function showResult(status,name,info,gender,kategori,tujuan){
     <div class="r-name">${name}</div>
     <div class="r-info">${info}</div>
     ${extra}
-    ${isUnknownF1 ? `
-    <div style="margin:12px 0 8px;padding:10px 12px;background:rgba(0,0,0,.06);border-radius:8px;text-align:left">
-      <div style="font-size:12px;font-weight:700;color:var(--gray-800);margin-bottom:6px">⚠️ Kemungkinan Penumpang Lanjutan</div>
-      <div style="font-size:11px;color:var(--gray-600);line-height:1.7">
-        Tiket tidak ditemukan dalam manifes embarkasi.<br>
-        Lakukan <b>pengecekan identitas manual</b> (KTP + boarding pass).<br>
-        Jika terbukti penumpang lanjutan yang sah, klik tombol di bawah.
-      </div>
-    </div>
-    <button onclick="catatPenumpangLanjutan('${lastScannedTicket}')"
-      style="margin-top:4px;width:100%;padding:10px;border:none;border-radius:8px;
-             background:#1565C0;color:#fff;font-size:13px;font-weight:700;cursor:pointer">
-      ✍️ Catat sebagai Penumpang Lanjutan
-    </button>` : ''}
+    ${decisionBlock}
     <div style="margin-top:10px;font-size:10px;color:var(--gray-400)">
       Pos: <b>${S.currentPos==='F1'?'Filter 1 — Trestle':'Filter 2 — Tangga Kapal'}</b> · ${new Date().toLocaleTimeString('id-ID',{hour12:false})}
     </div>`;
@@ -4229,6 +4317,101 @@ function vib(p){ if('vibrate' in navigator) navigator.vibrate(p); }
 let lastScannedTicket = '';
 
 // Catat penumpang lanjutan secara manual ke log dan Database
+// Izinkan tiket keluar sementara (transit/ambil barang) — boleh masuk lagi tanpa flag
+function izinkanKeluarSementara(ticket, name){
+  if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
+  const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
+
+  // Cek apakah sudah ada izin aktif
+  const sudah = S.izinKeluar.find(z=>z.ticket.toUpperCase()===ticket.toUpperCase() && !z.used);
+  if(sudah){
+    showToast('Tiket ini sudah punya izin keluar aktif','warning');
+    return;
+  }
+
+  S.izinKeluar.unshift({
+    ticket, name: name||'—', time: now,
+    pos: S.currentPos, used: false,
+    petugas: S.ship.name || '—',
+  });
+  if(S.izinKeluar.length > 100) S.izinKeluar.pop();
+  saveState();
+
+  // Catat di scan log sebagai jejak audit
+  const entry = {
+    time: now, ticket, name: name||'—',
+    pos: S.currentPos, status: 'IZIN_KELUAR',
+    info: 'Diizinkan keluar sementara oleh petugas (boleh naik lagi)',
+    gender:'', kategori:'',
+    shipType: S.shipType,
+    sesiId: S.currentSesiId || getSesiId(),
+  };
+  S.scanLog.unshift(entry);
+  saveState();
+  sbAddLog({...entry, _sesiId: entry.sesiId});
+
+  // Update tombol jadi konfirmasi
+  const box = document.getElementById('result-box');
+  if(box){
+    const btns = box.querySelectorAll('button');
+    btns.forEach(b=>b.disabled=true);
+    const okBtn = box.querySelector('[onclick^="izinkanKeluarSementara"]');
+    if(okBtn){
+      okBtn.textContent = '✅ Izin Diberikan';
+      okBtn.style.background = 'var(--green)';
+    }
+  }
+  showToast('✅ Izin keluar sementara diberikan · Tiket boleh masuk lagi','success');
+  renderLog();
+}
+
+// Tahan tiket yang mencurigakan — catat sebagai pelanggaran
+function tahanTiket(ticket, name, alasan){
+  if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
+  const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
+
+  const alasanText = alasan==='SUDAH_NAIK'
+    ? 'Tiket sudah tercatat naik kapal — ditahan petugas (curiga tiket dioper)'
+    : alasan==='TAK_DIKENAL'
+    ? 'Tiket tidak ada di manifes — ditahan petugas (curiga tiket tidak sah)'
+    : 'Ditahan petugas untuk verifikasi';
+
+  // Catat ke dupAlerts (alert duplikat/pelanggaran)
+  S.dupAlerts.unshift({
+    ticket, name: name||'—', time: now,
+    pos: S.currentPos, prevPos: alasan==='SUDAH_NAIK' ? 'F2' : '—',
+    ditahan: true, alasan: alasanText,
+  });
+  if(S.dupAlerts.length > 30) S.dupAlerts.pop();
+
+  // Catat di scan log sebagai jejak audit
+  const entry = {
+    time: now, ticket, name: name||'—',
+    pos: S.currentPos, status: 'DITAHAN',
+    info: alasanText,
+    gender:'', kategori:'',
+    shipType: S.shipType,
+    sesiId: S.currentSesiId || getSesiId(),
+  };
+  S.scanLog.unshift(entry);
+  saveState();
+  sbAddLog({...entry, _sesiId: entry.sesiId});
+
+  const box = document.getElementById('result-box');
+  if(box){
+    const btns = box.querySelectorAll('button');
+    btns.forEach(b=>b.disabled=true);
+    const tahanBtn = box.querySelector('[onclick^="tahanTiket"]');
+    if(tahanBtn){
+      tahanBtn.textContent = '🚨 Ditahan & Dicatat';
+    }
+  }
+  showToast('🚨 Tiket ditahan & dicatat sebagai pelanggaran','error');
+  vib([300,100,300]);
+  updateInfografis();
+  renderLog();
+}
+
 function catatPenumpangLanjutan(ticket){
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
   const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
@@ -5119,6 +5302,8 @@ function renderLog(){
     else if(l.status==='DUPLIKAT') badge='<span class="badge br">🚨 Duplikat</span>';
     else if(l.status==='TRANSIT') badge='<span class="badge ba">🔄 Transit</span>';
     else if(l.status==='PERHATIAN') badge='<span class="badge ba">⚠️ Perhatian</span>';
+    else if(l.status==='IZIN_KELUAR') badge='<span class="badge ba">🔄 Izin Keluar</span>';
+    else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
     const pc=`<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
     return `<tr>
@@ -5355,6 +5540,7 @@ async function resetScanOnly(){
   S.scanLog=[];
   S.transitLog=[];
   S.lanjutanLog=[];
+  S.izinKeluar=[];
   S.dupAlerts=[];
   S.manifest.forEach(p=>{ p._status='pending'; });
   saveState();
@@ -5407,6 +5593,7 @@ async function resetAllData(){
   S.scanLog=[];
   S.transitLog=[];
   S.lanjutanLog=[];
+  S.izinKeluar=[];
   S.dupAlerts=[];
   S.manifest=[];
   S._manifesLoadedAt=null;
