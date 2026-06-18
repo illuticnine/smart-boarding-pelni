@@ -2739,9 +2739,22 @@ async function fetchManifesFromGS(){
   // Sekarang menggunakan Supabase — nama fungsi dipertahankan untuk kompatibilitas
   if(!sb) throw new Error('Supabase belum dikonfigurasi · Hubungi Admin');
   const manifest = await sbGetManifes();
-  // Deteksi tipe dari data yang kembali
-  const hasPerintisField = manifest.length > 0 && (manifest[0]['Nama Kapal'] || manifest[0]['Tgl Etd']);
-  const tipeKapal = hasPerintisField ? 'perintis' : (S.shipType || 'perintis');
+
+  // Tentukan tipe kapal SECARA AKURAT, bukan menebak dari ada/tidaknya field.
+  // Prioritas: (1) tipe dari sesi aktif yang dipilih, (2) S.shipType yang sudah di-set,
+  // (3) deteksi dari struktur data sebagai fallback terakhir.
+  let tipeKapal = S.shipType || '';
+  const kapalInfo = S.kapalAktif.find(k=>k.sesi_id===S.currentSesiId);
+  if(kapalInfo && kapalInfo.tipe_kapal){
+    tipeKapal = kapalInfo.tipe_kapal;   // sumber paling akurat
+  }
+  if(!tipeKapal){
+    // Fallback: deteksi dari struktur data (kapal penumpang punya KELAS/UMUR_TAHUN)
+    const sample = manifest[0] || {};
+    const adaFieldPenumpang = sample.KELAS || sample.UMUR_TAHUN || sample['Umur(Th)'];
+    tipeKapal = adaFieldPenumpang ? 'penumpang' : 'perintis';
+  }
+
   const namaKapal = S.ship.name || (manifest[0] && manifest[0]['Nama Kapal']) || '';
   return { manifest, tipeKapal, namaKapal };
 }
