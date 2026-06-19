@@ -3772,10 +3772,42 @@ async function lanjutSesiLama(){
 
 // Tampilkan dialog pilihan sesi saat admin login
 async function cekSesiAdminLogin(){
-  const sesiList = await sbGetSesiAktif();
+  // Query sesi aktif LANGSUNG agar bisa membedakan "sukses tapi kosong"
+  // (server memang tidak punya sesi) dari "gagal/offline" (jangan hapus cache lokal).
+  // Catatan: sbGetSesiAktif() mengembalikan [] pada kedua kondisi, sehingga tidak
+  // bisa dipakai untuk membedakannya — karena itu di sini kita query manual.
+  let sesiList = [];
+  let querySukses = false;
+  if(sb){
+    try{
+      const { data, error } = await sb.from('sesi_kapal')
+        .select('*').eq('status','aktif').order('created_at', { ascending: true });
+      if(error) throw error;
+      sesiList = data || [];
+      querySukses = true;
+    }catch(e){
+      console.warn('[SB] cekSesiAdminLogin error:', e.message);
+    }
+  }
   S.kapalAktif = sesiList;
 
   if(sesiList.length === 0){
+    // Server berhasil diquery & TIDAK ada sesi aktif → bersihkan cache lokal yang basi
+    // (mis. manifes lama yang masih tersimpan di localStorage browser ini).
+    // HANYA saat query sukses; saat offline/error, data lokal dipertahankan.
+    if(querySukses && (S.manifest.length || S.scanLog.length)){
+      S.manifest    = [];
+      S.scanLog     = [];
+      S.lanjutanLog = [];
+      S.izinKeluar  = [];
+      S.dupAlerts   = [];
+      S._manifesLoadedAt = null;
+      saveState();
+      renderManifestTable();
+      updateManifestSummary();
+      updateDashCounters();
+      showToast('🔄 Tidak ada sesi aktif di database · data lokal lama dibersihkan','warning');
+    }
     // Tidak ada sesi aktif → langsung ke tab manifes untuk tambah kapal
     updateManifesPage();
     return;
