@@ -188,7 +188,7 @@ tr:hover td{background:var(--gray-50)}
   transition:all .15s;color:var(--gray-600)}
 .fbtn.active{border-color:var(--blue);background:var(--blue-lt);color:var(--blue)}
 
-/* GOOGLE SHEETS SETUP */
+/* STATUS DATABASE */
 .gs-step{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--gray-100)}
 .gs-step:last-child{border:none}
 .gs-num{width:28px;height:28px;border-radius:50%;background:var(--navy);color:#fff;
@@ -1342,7 +1342,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   </div>
 </div>
 
-<!-- ═══════════════════ GOOGLE SHEETS PAGE ═══════════════════ -->
+<!-- ═══════════════════ DATABASE (SUPABASE) PAGE ═══════════════════ -->
 <div class="page" id="page-gsheets">
 
   <!-- Status Koneksi -->
@@ -1519,9 +1519,6 @@ const SUPABASE_URL  = 'https://knmkbqjpcjuhozljdmka.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubWticWpwY2p1aG96bGpkbWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MjU0NDYsImV4cCI6MjA5NzAwMTQ0Nn0.QJ4Ku7iVPCKuaLzPCLqtznwbRxD6bX8PuCG7sSBmQCo';
 const APP_VERSION   = 'v2.0';
 
-// Legacy — tidak dipakai lagi (Supabase menggantikan Database)
-const GS_APPS_SCRIPT_URL = '';
-
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
   admin : '1234',   // ← ganti PIN Admin
@@ -1591,7 +1588,7 @@ let S = {
   manifestPageSize: 10,   // jumlah baris per halaman
 
   // ── Config ──────────────────────────────────────────────
-  gs: { url: GS_APPS_SCRIPT_URL, name:'', connected: GS_APPS_SCRIPT_URL!=='', autoSync: GS_APPS_SCRIPT_URL!=='', lastSync:'' },
+  gs: { connected: false },   // flag: cloud (Supabase) terhubung
   scanMode: 'camera',
   currentPos: 'F1',
   _manifesLoadedAt: null,
@@ -1612,13 +1609,6 @@ function loadState(){
       if(!Array.isArray(S.lanjutanLog)) S.lanjutanLog=[];
     }
   }catch(e){}
-  // GS_APPS_SCRIPT_URL konstanta SELALU override localStorage
-  // (termasuk override nilai kosong '' dari localStorage lama)
-  if(GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim() !== ''){
-    S.gs.url       = GS_APPS_SCRIPT_URL.trim();
-    S.gs.connected = true;
-    S.gs.autoSync  = true;
-  }
 }
 function saveState(){
   try{ localStorage.setItem('smart2',JSON.stringify(S)); }catch(e){}
@@ -2028,7 +2018,7 @@ async function processTicket(ticketNo){
     // ⚠️ Scan F1 lagi (sudah di dermaga, belum naik) tanpa izin keluar
     const lastF1=prevScans.filter(l=>l.pos==='F1').pop();
     status='DUPLIKAT'; name=getName(pax);
-    info='Sudah di-scan Filter 1 pukul '+lastF1.time+' · Belum ada izin keluar · Curiga joki tiket!';
+    info='Sudah di-scan Filter 1 pukul '+(lastF1?lastF1.time:'-')+' · Belum ada izin keluar · Curiga joki tiket!';
     S.dupAlerts.unshift({ticket:ticketNo,name,time:timeStr,pos:S.currentPos,prevPos:'F1'});
     if(S.dupAlerts.length>30) S.dupAlerts.pop();
 
@@ -2041,7 +2031,7 @@ async function processTicket(ticketNo){
     // ⚠️ Scan F2 lagi setelah sudah naik (duplikat di F2)
     const lastF2=prevScans.filter(l=>l.pos==='F2').pop();
     status='DUPLIKAT'; name=getName(pax);
-    info='Sudah tercatat NAIK ke kapal pukul '+lastF2.time+' · Duplikat!';
+    info='Sudah tercatat NAIK ke kapal pukul '+(lastF2?lastF2.time:'-')+' · Duplikat!';
     S.dupAlerts.unshift({ticket:ticketNo,name,time:timeStr,pos:S.currentPos,prevPos:'F2'});
     if(S.dupAlerts.length>30) S.dupAlerts.pop();
 
@@ -2247,7 +2237,7 @@ function showResult(status,name,info,gender,kategori,tujuan){
   box.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 // ══════════════════════════════════════
-// LOAD MANIFES DARI GOOGLE SHEETS
+// LOAD MANIFES DARI DATABASE (SUPABASE)
 // ══════════════════════════════════════
 // Banner notifikasi auto-load saat pertama buka webapp
 function showAutoLoadBanner(){
@@ -2790,33 +2780,6 @@ async function fetchManifesFromGS(){
   return { manifest, tipeKapal, namaKapal };
 }
 
-async function applyUrlFromDialog(){
-  const inp = document.getElementById('dialog-gs-url');
-  const url = inp ? inp.value.trim() : '';
-  if(!url || !url.startsWith('http')){
-    inp.style.borderColor='#c62828';
-    inp.placeholder='URL tidak valid — harus diawali https://';
-    return;
-  }
-  // Simpan URL
-  S.gs.url = url;
-  S.gs.connected = true;
-  S.gs.autoSync = true;
-  saveState();
-  // Tutup dialog
-  const dlg = document.getElementById('url-input-dialog');
-  if(dlg) dlg.remove();
-  // Lanjut load manifes
-  showToast('⏳ Memuat manifes...','warning');
-  try{
-    const result = await fetchManifesFromGS();
-    applyManifesToState(result);
-    showToast('✅ '+result.manifest.length+' penumpang siap di-boarding','success');
-  }catch(err){
-    showToast('❌ '+err.message,'error');
-    showUrlInputDialog(); // Buka lagi kalau gagal
-  }
-}
 
 // ══════════════════════════════════════
 // DASHBOARD REFRESH DARI SHEETS (untuk Admin)
@@ -3063,7 +3026,7 @@ function updateInfografisF2(){
 
 // ══════════════════════════════════════════════════════════════
 // SUPABASE — FUNGSI DATABASE
-// Menggantikan gsPost / Database sepenuhnya
+// Seluruh penyimpanan data berjalan di Supabase
 // ══════════════════════════════════════════════════════════════
 
 // ── SCAN LOG ──────────────────────────────────────────────────
@@ -5311,16 +5274,6 @@ function processTransitTicket(ticketNo){
     showTransitResult('kembali', name, ticketNo, now, existing.outTime);
     showToast(`✅ ${name} kembali ke dermaga`,'success');
     vib([100,50,100]);
-    // Kirim update ke Sheets
-    if(S.gs.connected){
-      gsPost({
-        action:'addTransit',
-        ticket:ticketNo, name,
-        outTime:existing.outTime,
-        returnTime:now,
-        status:'kembali'
-      }).catch(()=>{});
-    }
   } else {
     // ── SCAN PERTAMA: penumpang KELUAR ke terminal ──
     const newEntry = {ticket:ticketNo, name, outTime:now, returned:false};
@@ -5330,20 +5283,6 @@ function processTransitTicket(ticketNo){
     showTransitResult('keluar', name, ticketNo, now, null);
     showToast(`🚶 ${name} dicatat keluar ke terminal`,'warning');
     vib([150]);
-    // Kirim ke Sheets secara real-time
-    if(S.gs.connected){
-      gsPost({
-        action:'addTransit',
-        ticket:ticketNo, name,
-        outTime:now,
-        returnTime:'',
-        status:'keluar'
-      }).then(()=>{
-        updateTrSyncStatus(true);
-      }).catch(()=>{
-        updateTrSyncStatus(false);
-      });
-    }
   }
 
   // Bersihkan input manual
@@ -5371,7 +5310,7 @@ function showTransitResult(type, name, ticket, time, outTime){
     ${isKembali && durasi ? `<div class="r-info" style="margin-top:4px">⏱ Durasi di terminal: ${durasi}</div>` : ''}
     <div style="margin-top:8px;font-size:10px;color:var(--gray-400)">
       ${isKembali?'Keluar: '+outTime+' · ':''} ${time}
-      ${S.gs.connected ? '<span style="color:var(--green)"> · ☁️ Tersimpan ke Sheets</span>' : '<span style="color:var(--gray-400)"> · ⚠️ Belum terhubung Sheets</span>'}
+      ${S.transitLog.length ? '<span style="color:var(--gray-400)"> · 📂 Tersimpan lokal</span>' : ''}
     </div>`;
   box.scrollIntoView({behavior:'smooth',block:'nearest'});
   // Auto-hide setelah 5 detik
@@ -5422,22 +5361,9 @@ function updateTrSyncStatus(ok){
 }
 
 async function syncTransitNow(){
-  if(!S.gs.connected){showToast('Database Supabase belum terhubung','error');return;}
-  showToast('🔄 Sync transit...','warning');
-  let ok=true;
-  for(const t of S.transitLog.slice(0,100)){
-    try{
-      await gsPost({
-        action:'addTransit',
-        ticket:t.ticket, name:t.name,
-        outTime:t.outTime,
-        returnTime:t.returnTime||'',
-        status:t.returned?'kembali':'keluar'
-      });
-    }catch(e){ ok=false; }
-  }
-  updateTrSyncStatus(ok);
-  showToast(ok?'✅ Transit tersync':'❌ Sync sebagian gagal', ok?'success':'error');
+  // Sinkronisasi ke Google Sheets telah dihapus — data utama disimpan di Supabase.
+  // Log transit kini bersifat lokal di perangkat ini.
+  showToast('ℹ️ Log transit tersimpan lokal di perangkat ini','warning');
 }
 
 function clearTransitLog(){
@@ -5587,167 +5513,26 @@ document.querySelectorAll('.modal-bg').forEach(m=>
 );
 
 // ══════════════════════════════════════════
-// GOOGLE SHEETS
+// STATUS DATABASE (SUPABASE)
 // ══════════════════════════════════════════
-function renderGSPage(){
-  const connected=S.gs.connected;
-  document.getElementById('gs-connected-panel').style.display=connected?'block':'none';
-  document.getElementById('gs-setup-panel').style.display='block';
-  if(connected){
-    document.getElementById('gs-sheet-name-display').textContent=S.gs.name||S.gs.url.substring(0,60)+'...';
-    document.getElementById('gs-last-sync').textContent='Sync terakhir: '+(S.gs.lastSync||'Belum pernah');
-    document.getElementById('gs-url-input').value=S.gs.url;
-    document.getElementById('gs-name-input').value=S.gs.name;
-  }
-  updateGSDot();
-  // Toggle state
-  const tog=document.getElementById('auto-sync-toggle');
-  tog.checked=S.gs.autoSync;
-  const span=document.getElementById('toggle-span');
-  span.style.background=S.gs.autoSync?'var(--green)':'var(--gray-200)';
-  tog.onchange=()=>{
-    S.gs.autoSync=tog.checked;
-    span.style.background=tog.checked?'var(--green)':'var(--gray-200)';
-    saveState();
-    showToast(tog.checked?'Auto-sync aktif':'Auto-sync nonaktif');
-  };
-}
-
 function updateGSDot(){
   const dot=document.getElementById('sync-dot');
   const bar=document.getElementById('gs-status-bar');
   const txt=document.getElementById('gs-status-text');
+  const gsDot=document.getElementById('gs-dot'); // dot di dalam status-bar halaman Database
   if(!dot||!bar||!txt) return;
   if(sb && SUPABASE_URL){
     dot.className='sync-dot ok';
+    if(gsDot) gsDot.className='sync-dot ok';
     bar.className='sync-bar connected';
     txt.textContent='Terhubung ke Supabase · Database aktif';
   } else {
     dot.className='sync-dot';
+    if(gsDot) gsDot.className='sync-dot';
     bar.className='sync-bar disconnected';
     txt.textContent='Database belum dikonfigurasi · Isi SUPABASE_URL di index.html';
   }
 }
-
-// ── GOOGLE SHEETS: Teknik pengiriman data ──
-// Google Apps Script hanya menerima POST dengan content-type text/plain
-// (bukan application/json) karena CORS preflight tidak di-support.
-// Solusi: kirim sebagai text/plain tapi isi body tetap JSON string.
-// Apps Script membaca e.postData.contents seperti biasa.
-
-// LEGACY — tidak dipakai lagi (diganti Supabase)
-async function gsPost(data){
-  console.warn('[LEGACY gsPost] Tidak digunakan lagi, pakai Supabase');
-  throw new Error('gsPost tidak digunakan lagi — pakai Supabase');
-  const res = await fetch(S.gs.url, {
-    method: 'POST',
-    // Kunci: text/plain menghindari CORS preflight OPTIONS
-    // Apps Script tetap bisa membaca JSON dari e.postData.contents
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(data),
-    redirect: 'follow',
-  });
-  // Apps Script redirect ke URL baru setelah eksekusi — ikuti redirect
-  if(!res.ok && res.status !== 0) throw new Error('HTTP '+res.status);
-  return res;
-}
-
-// Test koneksi pakai GET (tidak ada CORS masalah untuk GET sederhana)
-async function connectGS(){
-  const url=document.getElementById('gs-url-input').value.trim();
-  const name=document.getElementById('gs-name-input').value.trim();
-  if(!url||!url.includes('script.google.com')){
-    showToast('URL Apps Script tidak valid','error'); return;
-  }
-  showToast('⏳ Menguji koneksi...','warning');
-  try{
-    // GET ke Apps Script tidak kena CORS — digunakan untuk tes ping
-    const res = await fetch(url+'?action=ping', { redirect:'follow' });
-    const json = await res.json();
-    if(json.ok){
-      S.gs.url=url; S.gs.name=name||'Database Supabase'; S.gs.connected=true;
-      saveState(); renderGSPage(); updateGSDot();
-      showToast('✅ Terhubung ke Database Supabase!','success');
-    } else {
-      showToast('Koneksi gagal: '+json.msg,'error');
-    }
-  }catch(e){
-    showToast('Gagal terhubung — pastikan URL benar dan sudah di-deploy','error');
-  }
-}
-
-function disconnectGS(){
-  if(!confirm('Putus koneksi Database?')) return;
-  S.gs.connected=false; S.gs.autoSync=false;
-  saveState(); renderGSPage(); updateGSDot();
-  showToast('Koneksi diputus');
-}
-
-async function syncNow(){
-  if(!S.gs.connected){showToast('Belum terhubung','error');return;}
-  if(!S.scanLog.length){showToast('Belum ada data scan untuk disync','warning');return;}
-  showToast('🔄 Sync sedang berjalan...','warning');
-  document.getElementById('sync-dot').className='sync-dot syncing';
-  try{
-    // Kirim log satu per satu (Apps Script tidak support batch row insert besar)
-    const toSync = S.scanLog.slice(0, 100);
-    for(const entry of toSync){
-      await gsPost({
-        action:'addLog',
-        ...entry,
-        shipName: S.ship.name,
-        voyage: S.ship.voyage,
-      });
-    }
-    S.gs.lastSync=new Date().toLocaleString('id-ID');
-    saveState();
-    const el=document.getElementById('gs-last-sync');
-    if(el) el.textContent='Sync terakhir: '+S.gs.lastSync;
-    updateGSDot();
-    showToast('✅ Sync '+toSync.length+' data berhasil','success');
-  }catch(e){
-    updateGSDot();
-    showToast('Sync gagal: '+e.message,'error');
-  }
-}
-
-async function syncManifes(){
-  if(!S.gs.connected){showToast('Belum terhubung','error');return;}
-  if(!S.manifest.length){showToast('Belum ada manifes','warning');return;}
-  showToast('🔄 Upload manifes ('+S.manifest.length+' baris)...','warning');
-  try{
-    const isPerintis=S.shipType==='perintis';
-    const headers=isPerintis
-      ?['Nama Kapal','No Tiket','Pel. Asal','Pel. Tujuan','Tgl Etd','Nama Pnp','Jen. Kelamin','Kategori','Status']
-      :['NO_TIKET','NAMA','KELAS','KATEGORI','ASAL','TUJUAN','JEN_KELAMIN','USIA','USIA_BULAN','NO_IDENTITAS','Status'];
-    const rows=S.manifest.map(p=>isPerintis
-      ?[p['Nama Kapal']||'',p['No Tiket']||p.NO_TIKET||'',
-        p['Pel. Awal']||p['Pel. Asal']||'',
-        p['Pel. Tujuan']||'',p['Tgl Etd']||'',p['Nama Pnp']||'',
-        p['Jen. Kelamin']||'',p['Kategori']||'',p._status||'pending']
-      :[p.NO_TIKET||'',p.NAMA||p['Nama Pnp']||'',p.KELAS||'',
-        p.KATEGORI||'',
-        p.ASAL||p['Pel. Awal']||'',
-        p.TUJUAN||p['Pel. Tujuan']||'',p.JEN_KELAMIN||p['Jen. Kelamin']||'',
-        String(p.UMUR_TAHUN||p.USIA||''),String(p.UMUR_BULAN||''),p.NO_IDENTITAS||'',p._status||'pending']
-    );
-    showToast('⏳ Mengupload manifes ke database...','warning');
-    const uploadOk = await sbUploadManifes(S.manifest, S.shipType);
-    if(!uploadOk) throw new Error('Gagal upload ke Supabase');
-    showToast('✅ Manifes '+S.manifest.length+' penumpang tersimpan ke database','success');
-    // Reset scanLog lokal
-    S.scanLog=[];
-    S.dupAlerts=[];
-    S.manifest.forEach(p=>{ p._status='pending'; });
-    saveState();
-    updateDashCounters();
-    renderLog();
-  }catch(e){
-    showToast('Upload manifes gagal: '+e.message,'error');
-  }
-}
-
-function saveSettings(){ saveState(); }
 
 // Reset hanya log scan & status boarding (manifes tetap)
 async function resetScanOnly(){
@@ -5870,13 +5655,6 @@ function initApp(){
 // Load state dari localStorage
 loadState();
 
-// Inject URL konstanta sebelum apapun dijalankan
-if(GS_APPS_SCRIPT_URL && GS_APPS_SCRIPT_URL.trim() !== ''){
-  S.gs.url       = GS_APPS_SCRIPT_URL.trim();
-  S.gs.connected = true;
-  S.gs.autoSync  = true;
-}
-
 setShipType(S.shipType);
 // ship-label diupdate via updateShipLabel()
 if(S.manifest.length){ document.getElementById('manifest-summary').style.display='block'; document.getElementById('manifest-table-card').style.display='block'; updateManifestSummary(); }
@@ -5891,8 +5669,7 @@ updateManifesStatusUI();
 // Inisialisasi Supabase
 const sbOk = initSupabase();
 if(sbOk){
-  S.gs.connected = true;
-  S.gs.autoSync  = true;
+  S.gs.connected = true;   // cloud (Supabase) terhubung
   updateGSDot();
   // Test koneksi async
   sbTestConnection().then(ok=>{
