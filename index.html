@@ -2917,8 +2917,10 @@ function startPetugasStatusRefresh(){
   stopPetugasStatusRefresh();
   // Langsung refresh sekali saat mulai
   refreshStatusFromSheets();
-  // Lalu setiap 30 detik
+  // Lalu setiap 30 detik (cadangan bila Realtime tidak aktif)
   _petugasRefreshTimer = setInterval(refreshStatusFromSheets, 30000);
+  // Sinkronisasi seketika antar-perangkat via Supabase Realtime
+  startRealtimeSync();
 }
 
 function stopPetugasStatusRefresh(){
@@ -2926,6 +2928,28 @@ function stopPetugasStatusRefresh(){
     clearInterval(_petugasRefreshTimer);
     _petugasRefreshTimer = null;
   }
+  stopRealtimeSync();
+}
+
+// ── REALTIME: refresh seketika saat ada scan dari perangkat lain ──
+// Mendengarkan INSERT di scan_log; tiap event memicu refresh status &
+// infografis (di-debounce agar burst scan jadi satu refresh).
+let _realtimeDebounce = null;
+function startRealtimeSync(){
+  if(!sb) return;
+  sbSubscribeScanLog(()=>{
+    clearTimeout(_realtimeDebounce);
+    _realtimeDebounce = setTimeout(async ()=>{
+      if(currentRole === null) return;
+      try{ await syncStatusFromSupabase(true); }catch(e){}
+      updateInfografis();
+      updateDashCounters();
+    }, 350);
+  });
+}
+function stopRealtimeSync(){
+  clearTimeout(_realtimeDebounce);
+  sbUnsubscribe();
 }
 
 async function refreshStatusFromSheets(){
@@ -2996,19 +3020,52 @@ async function updateInfografisF1(){
 }
 
 // F2: dari S.manifest lokal (sudah benar — F2 terkunci ke 1 kapal yang dipilih)
-function updateInfografisF2(){
-  const total  = S.manifest.length;
-  const naik   = S.manifest.filter(p=>p._status==='naik').length;
-  const dermaga= S.manifest.filter(p=>p._status==='dermaga').length;
-  const belum  = total - naik - dermaga;
-  const dup    = S.dupAlerts.length;
-  const pct    = total>0 ? Math.round(naik/total*100) : 0;
-
+// F2: hitung dari Supabase (data BERSAMA lintas perangkat) untuk sesi yang dipilih,
+// dengan fallback ke status lokal bila offline. Membuat semua HP F2 menampilkan
+// angka yang sama meski beberapa petugas scan bersamaan.
+async function updateInfografisF2(){
   const se = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
 
   document.getElementById('infog-f1-stats').style.display='none';
   document.getElementById('infog-f2-stats').style.display='grid';
   document.getElementById('infog-title').textContent='⛵ Filter 2 — Tangga Kapal';
+
+  const total = S.manifest.length;
+  let naik=0, dermaga=0, dup=0, fromSupabase=false;
+
+  const sesiId = S.currentSesiId;
+  if(sb && sesiId){
+    try{
+      const { data: scans, error } = await sb.from('scan_log')
+        .select('no_tiket,status')
+        .eq('sesi_id', sesiId);
+      if(error) throw error;
+      const rows = scans || [];
+      // Status terbaik per tiket: NAIK (2) > OK/dermaga (1)
+      const rank = { naik:2, dermaga:1 };
+      const best = {};
+      rows.forEach(r=>{
+        const t = String(r.no_tiket||'').trim(); if(!t) return;
+        const ms = r.status==='NAIK' ? 'naik' : (r.status==='OK' ? 'dermaga' : null);
+        if(!ms) return;
+        if((rank[ms]||0) > (rank[best[t]]||0)) best[t] = ms;
+      });
+      Object.values(best).forEach(s=>{ if(s==='naik') naik++; else if(s==='dermaga') dermaga++; });
+      dup = rows.filter(r=>r.status==='DUPLIKAT').length;
+      fromSupabase = true;
+    }catch(e){ /* jatuh ke fallback lokal di bawah */ }
+  }
+
+  if(!fromSupabase){
+    // Fallback offline: pakai status lokal
+    naik    = S.manifest.filter(p=>p._status==='naik').length;
+    dermaga = S.manifest.filter(p=>p._status==='dermaga').length;
+    dup     = S.dupAlerts.length;
+  }
+
+  const belum = Math.max(0, total - naik - dermaga);
+  const pct   = total>0 ? Math.round(naik/total*100) : 0;
+
   se('infog-f2-belum',   belum);
   se('infog-f2-dermaga', dermaga);
   se('infog-f2-naik',    naik);
@@ -3259,16 +3316,19 @@ async function sbAddLanjutan(ticket, waktu, tanggal){
 // ── REAL-TIME SUBSCRIPTION ────────────────────────────────────
 let _sbChannel = null;
 
+// Langganan realtime ke SEMUA INSERT di scan_log (tanpa filter sesi) agar
+// mendukung F1 yang melayani banyak kapal sekaligus maupun F2 (1 kapal).
+// callback dipanggil tiap ada baris scan baru dari perangkat manapun.
 function sbSubscribeScanLog(callback){
   if(!sb) return;
-  const sesiId = getSesiId();
-  _sbChannel = sb.channel('scan_log_'+sesiId)
+  sbUnsubscribe();  // cegah langganan ganda
+  _sbChannel = sb.channel('scan_log_realtime')
     .on('postgres_changes',{
       event: 'INSERT', schema: 'public', table: 'scan_log',
-      filter: 'sesi_id=eq.'+sesiId,
-    }, payload => callback(payload.new))
-    .subscribe();
-  console.log('[SB] Subscribed to scan_log realtime');
+    }, payload => { try{ callback(payload.new); }catch(e){} })
+    .subscribe(status=>{
+      if(status==='SUBSCRIBED') console.log('[SB] Realtime scan_log aktif');
+    });
 }
 
 function sbUnsubscribe(){
