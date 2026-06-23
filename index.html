@@ -1174,6 +1174,14 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
         <div class="stat-label">Duplikat</div>
       </div>
     </div>
+    <div id="d-problem-card-p" style="background:#fff;border-radius:var(--rs);box-shadow:var(--sh);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+      <div style="font-size:22px">🚫</div>
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:600">Tiket Bermasalah</div>
+        <div style="font-size:10px;color:var(--gray-400)">Tak terdaftar / tak dikenal / ditahan</div>
+      </div>
+      <div class="stat-num" id="d-problem-p" style="font-size:24px;color:var(--gray-400)">0</div>
+    </div>
     <div class="card">
       <div class="card-title">
         <div class="cticon" style="background:#E8F5E9">📈</div>Progress Embarkasi
@@ -1346,7 +1354,9 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       <div class="fbtn" onclick="filterLog('TRANSIT',this)">🟡 Transit</div>
       <div class="fbtn" onclick="filterLog('PERHATIAN',this)">⚠️ Perhatian</div>
       <div class="fbtn" onclick="filterLog('TIDAK DIKENAL',this)">⚪ Tdk Dikenal</div>
+      <div class="fbtn fbtn-bermasalah" onclick="filterLog('BERMASALAH',this)">🚫 Bermasalah</div>
     </div>
+    <div id="log-problem-count" style="display:none;background:#FFF3E0;color:#E65100;border:1px solid #FFE0B2;border-radius:8px;padding:8px 11px;font-size:12px;margin-bottom:10px"></div>
     <div style="display:flex;gap:7px;margin-bottom:12px">
       <button class="btn btn-sm btn-success" onclick="exportLog()" style="flex:1">⬇ Export CSV</button>
       <button class="btn btn-sm" style="background:var(--red-lt);color:var(--red);flex:1" onclick="clearLog()">🗑 Hapus</button>
@@ -3766,8 +3776,11 @@ async function loadLogFromSupabase(){
 
 function renderLogFromCache(){
   const source = _sbLogCache.length ? _sbLogCache : S.scanLog;
+  updateLogProblemSummary(source);
   const filter = S.logFilter;
-  const filtered = filter === 'all' ? source : source.filter(l => l.status === filter);
+  const filtered = filter === 'all' ? source
+    : (filter === 'BERMASALAH' ? source.filter(l => isProblemStatus(l.status))
+       : source.filter(l => l.status === filter));
 
   const tbody = document.getElementById('log-tbody');
   const empty = document.getElementById('log-empty');
@@ -3781,6 +3794,9 @@ function renderLogFromCache(){
     else if(l.status==='DUPLIKAT') badge='<span class="badge br">🚨 Duplikat</span>';
     else if(l.status==='TRANSIT')  badge='<span class="badge ba">🔄 Transit</span>';
     else if(l.status==='PERHATIAN') badge='<span class="badge ba">⚠️ Perhatian</span>';
+    else if(l.status==='IZIN_KELUAR') badge='<span class="badge ba">🔄 Izin Keluar</span>';
+    else if(l.status==='CEK_LANJUTAN') badge='<span class="badge ba">🔎 Cek Lanjutan</span>';
+    else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
     const pc = `<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
     return `<tr>
@@ -5476,6 +5492,12 @@ function updateDashCounters(){
   se('d-f1-label','Filter 1: '+f1+' scan');
   se('d-f2',      'Filter 2: '+f2+' naik');
 
+  // Counter tiket bermasalah (tak terdaftar / tak dikenal / ditahan)
+  const problem = S.scanLog.filter(l=>isProblemStatus(l.status)).length;
+  se('d-problem-p', problem);
+  const probEl = document.getElementById('d-problem-p');
+  if(probEl) probEl.style.color = problem>0 ? '#C62828' : 'var(--gray-400)';
+
   const pbp = document.getElementById('prog-bar-p');
   if(pbp) pbp.style.width = pct+'%';
   se('prog-pct-p', pct+'%');
@@ -5773,17 +5795,39 @@ function saveTransit(){ /* tidak dipakai lagi */ }
 // ══════════════════════════════════════════
 // LOG
 // ══════════════════════════════════════════
+// Status "tiket bermasalah": tak terdaftar di F1 (perlu verifikasi lanjutan),
+// tak dikenal di F2, atau ditahan petugas. Untuk ditinjau di akhir keberangkatan.
+const PROBLEM_STATUSES = ['CEK_LANJUTAN','TIDAK DIKENAL','DITAHAN'];
+function isProblemStatus(s){ return PROBLEM_STATUSES.includes(s); }
+
+// Hitung & tampilkan ringkasan jumlah tiket bermasalah di atas tabel Log
+function updateLogProblemSummary(source){
+  const el = document.getElementById('log-problem-count');
+  if(!el) return;
+  const n = (source||[]).filter(l=>isProblemStatus(l.status)).length;
+  if(n>0){
+    el.style.display='block';
+    el.innerHTML = `⚠️ <b>${n}</b> tiket bermasalah (tak terdaftar / ditahan) — `
+      + `<span style="text-decoration:underline;cursor:pointer" onclick="filterLog('BERMASALAH', document.querySelector('.fbtn-bermasalah'))">tinjau</span>`;
+  } else {
+    el.style.display='none';
+  }
+}
+
 function filterLog(f,el){
   S.logFilter=f;
   document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
+  if(el) el.classList.add('active');
   // Render dari cache Supabase jika ada, fallback ke lokal
   if(_sbLogCache.length) renderLogFromCache();
   else renderLog();
 }
 
 function renderLog(){
-  const filtered=S.logFilter==='all'?S.scanLog:S.scanLog.filter(l=>l.status===S.logFilter);
+  updateLogProblemSummary(S.scanLog);
+  const filtered = S.logFilter==='all' ? S.scanLog
+    : (S.logFilter==='BERMASALAH' ? S.scanLog.filter(l=>isProblemStatus(l.status))
+       : S.scanLog.filter(l=>l.status===S.logFilter));
   const tbody=document.getElementById('log-tbody');
   const empty=document.getElementById('log-empty');
   if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
@@ -5796,6 +5840,7 @@ function renderLog(){
     else if(l.status==='TRANSIT') badge='<span class="badge ba">🔄 Transit</span>';
     else if(l.status==='PERHATIAN') badge='<span class="badge ba">⚠️ Perhatian</span>';
     else if(l.status==='IZIN_KELUAR') badge='<span class="badge ba">🔄 Izin Keluar</span>';
+    else if(l.status==='CEK_LANJUTAN') badge='<span class="badge ba">🔎 Cek Lanjutan</span>';
     else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
     const pc=`<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
