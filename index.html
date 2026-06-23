@@ -1968,6 +1968,8 @@ async function processTicket(ticketNo){
           'Jen. Kelamin': sbPax.jen_kelamin,
           'Pel. Tujuan' : sbPax.tujuan,
           'Pel. Awal'   : sbPax.asal,
+          UMUR_TAHUN    : sbPax.usia,
+          UMUR_BULAN    : sbPax.usia_bulan,
           'Nama Kapal'  : sbPax.nama_kapal,
           _status       : sbPax.status || 'pending',
           _sesiId       : sbPax.sesi_id,
@@ -2132,6 +2134,20 @@ async function processTicket(ticketNo){
     }
   }
 
+  // Info penumpang untuk ditampilkan di hasil scan (berlaku F1 & F2)
+  let asal='', usia='';
+  if(pax){
+    if(!gender)   gender   = pax['Jen. Kelamin']||pax.JEN_KELAMIN||pax.JENIS_KELAMIN||'';
+    if(!kategori) kategori = pax['Kategori']||pax.KATEGORI||'';
+    if(!tujuan)   tujuan   = (pax['Pel. Tujuan']||pax.TUJUAN||'').replace(/ \/ \d+$/,'');
+    asal = (pax['Pel. Awal']||pax['Pel. Asal']||pax.ASAL||'').replace(/ \/ \d+$/,'');
+    const uTh = String(pax.UMUR_TAHUN||pax.USIA||'').trim();
+    const uBl = String(pax.UMUR_BULAN||pax.USIA_BULAN||'').trim();
+    if(uTh && uTh!=='0')      usia = uTh+' th';
+    else if(uBl && uBl!=='0') usia = uBl+' bln';
+    else if(uTh)              usia = uTh+' th';
+  }
+
   lastScannedTicket = ticketNo; // untuk tombol keputusan petugas
 
   // Status yang BUTUH KEPUTUSAN petugas: jangan catat dulu ke log.
@@ -2141,7 +2157,7 @@ async function processTicket(ticketNo){
 
   if(butuhKeputusan){
     _keputusanPending = true;   // kunci scanner sampai petugas menekan tombol keputusan
-    showResult(status,name,info,gender,kategori,tujuan);
+    showResult(status,name,info,gender,kategori,tujuan,asal,usia);
     return; // tunggu keputusan petugas
   }
   const entry={
@@ -2164,7 +2180,7 @@ async function processTicket(ticketNo){
   if(S.scanLog.length>500) S.scanLog.pop();
   saveState();
 
-  showResult(status,name,info,gender,kategori,tujuan);
+  showResult(status,name,info,gender,kategori,tujuan,asal,usia);
   updateDashCounters();
   renderManifestTable();
 
@@ -2180,7 +2196,7 @@ function getName(pax){
 // ══════════════════════════════════════════
 // RESULT
 // ══════════════════════════════════════════
-function showResult(status,name,info,gender,kategori,tujuan){
+function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
   const box=document.getElementById('result-box');
   box.style.display='block';
   let cls,icon,label,col;
@@ -2228,6 +2244,24 @@ function showResult(status,name,info,gender,kategori,tujuan){
     const gBadge=gender?`<span class="badge ${gender==='Wanita'?'br':'bb'}" style="font-size:12px;padding:5px 11px">${gLabel}</span>`:'';
     const kBadge=kategori?`<span class="badge bp" style="font-size:12px;padding:5px 11px;margin-left:5px">🏷 ${kategori}</span>`:'';
     extra=`<div style="margin-top:9px">${gBadge}${kBadge}</div>`;
+  }
+
+  // Info penumpang: pelabuhan asal → tujuan dan usia
+  let paxInfo='';
+  {
+    const rows=[];
+    if(asal||tujuan){
+      rows.push(`<div style="display:flex;justify-content:center;gap:6px;align-items:center">
+        <span style="color:var(--gray-500)">🛳</span>
+        <b>${asal||'—'}</b> <span style="color:var(--gray-400)">→</span> <b>${tujuan||'—'}</b>
+      </div>`);
+    }
+    if(usia){
+      rows.push(`<div style="margin-top:3px"><span style="color:var(--gray-500)">🎂 Usia:</span> <b>${usia}</b></div>`);
+    }
+    if(rows.length){
+      paxInfo=`<div style="margin-top:10px;padding:8px 12px;background:rgba(0,0,0,.04);border-radius:8px;font-size:12px;color:var(--gray-700);line-height:1.5">${rows.join('')}</div>`;
+    }
   }
 
   box.className='result-box '+cls;
@@ -2299,6 +2333,7 @@ function showResult(status,name,info,gender,kategori,tujuan){
     <div class="r-status" style="color:${col}">${label}</div>
     <div class="r-name">${name}</div>
     <div class="r-info">${info}</div>
+    ${paxInfo}
     ${extra}
     ${decisionBlock}
     <div style="margin-top:10px;font-size:10px;color:var(--gray-400)">
