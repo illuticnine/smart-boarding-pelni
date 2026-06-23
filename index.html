@@ -2093,6 +2093,11 @@ async function processTicket(ticketNo){
     S.dupAlerts.unshift({ticket:ticketNo,name,time:timeStr,pos:S.currentPos,prevPos:'F1'});
     if(S.dupAlerts.length>30) S.dupAlerts.pop();
 
+  } else if(S.currentPos==='F2' && !pax){
+    // ⚠️ F2: tiket TIDAK ADA di manifes kapal ini → tidak dikenal / curiga tidak sah
+    status='TIDAK DIKENAL'; name='—';
+    info='Nomor tiket tidak ada dalam manifes kapal ini · Periksa keabsahan tiket';
+
   } else if(S.currentPos==='F2' && scannedAtF1 && !scannedAtF2){
     // ✅ ALUR NORMAL: sudah scan F1, sekarang scan F2 = NAIK KAPAL
     status='NAIK'; name=getName(pax);
@@ -2107,9 +2112,10 @@ async function processTicket(ticketNo){
     if(S.dupAlerts.length>30) S.dupAlerts.pop();
 
   } else if(S.currentPos==='F2' && !scannedAtF1){
-    // ⚠️ Langsung ke F2 tanpa lewat F1 — curigai
-    status='PERHATIAN'; name=getName(pax);
-    info='Belum terdeteksi di Filter 1 · Periksa identitas penumpang';
+    // ⚠️ Penumpang ADA di manifes tapi belum lewat F1 → butuh KEPUTUSAN petugas
+    // (konfirmasi naik vs tahan) — menangani penumpang yang lewat F2 tanpa F1
+    status='CEK_NAIK_LANGSUNG'; name=getName(pax);
+    info='Penumpang ada di manifes tapi belum terdeteksi di Filter 1 · Verifikasi sebelum naik';
 
   } else if(!pax){
     // F2 dan tiket tidak dikenal
@@ -2153,7 +2159,7 @@ async function processTicket(ticketNo){
   // Status yang BUTUH KEPUTUSAN petugas: jangan catat dulu ke log.
   // Pencatatan terjadi saat petugas menekan tombol keputusan
   // (izinkanKeluarSementara / tahanTiket / catatPenumpangLanjutan).
-  const butuhKeputusan = (status==='CEK_SUDAH_NAIK' || status==='CEK_LANJUTAN');
+  const butuhKeputusan = (status==='CEK_SUDAH_NAIK' || status==='CEK_LANJUTAN' || status==='CEK_NAIK_LANGSUNG');
 
   if(butuhKeputusan){
     _keputusanPending = true;   // kunci scanner sampai petugas menekan tombol keputusan
@@ -2190,6 +2196,7 @@ async function processTicket(ticketNo){
 }
 
 function getName(pax){
+  if(!pax) return '—';
   return pax['Nama Pnp']||pax['NAMA']||pax['Nama']||'—';
 }
 
@@ -2232,6 +2239,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
     cls='transit';icon='🔍';
     label='TIDAK DI MANIFES — VERIFIKASI!';
     col='#6A1B9A';vib([150,80,150]);
+  } else if(status==='CEK_NAIK_LANGSUNG'){
+    cls='transit';icon='⚠️';
+    label='BELUM LEWAT FILTER 1 — VERIFIKASI!';
+    col='#E65100';vib([150,80,150]);
   } else{
     cls='unknown';icon='❓';
     label='TIDAK DIKENAL';
@@ -2316,6 +2327,34 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
         🔄 Penumpang Lanjutan
       </button>
       <button onclick="tahanTiket('${lastScannedTicket}','—','TAK_DIKENAL')"
+        style="flex:1;padding:11px;border:none;border-radius:8px;
+               background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+        🚨 Tahan
+      </button>
+    </div>
+    <button onclick="tutupHasilScan()"
+      style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
+             border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
+      Lewati tanpa keputusan
+    </button>`;
+  } else if(status==='CEK_NAIK_LANGSUNG'){
+    // Penumpang ada di manifes tapi belum lewat F1 → konfirmasi naik vs tahan
+    decisionBlock = `
+    <div style="margin:12px 0 8px;padding:10px 12px;background:rgba(230,81,0,.1);border-radius:8px;text-align:left">
+      <div style="font-size:12px;font-weight:700;color:#E65100;margin-bottom:6px">⚠️ Belum Terdeteksi di Filter 1</div>
+      <div style="font-size:11px;color:var(--gray-700);line-height:1.7">
+        Penumpang ada di manifes tapi belum lewat Filter 1 (trestle).<br>
+        Verifikasi <b>identitas (KTP)</b> + <b>tiket</b>.<br>
+        Jika sah → konfirmasi naik. Jika mencurigakan → tahan.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button onclick="konfirmasiNaikLangsung('${lastScannedTicket}','${(name||'').replace(/'/g,'')}')"
+        style="flex:1;padding:11px;border:none;border-radius:8px;
+               background:var(--teal);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+        ✅ Konfirmasi Naik
+      </button>
+      <button onclick="tahanTiket('${lastScannedTicket}','${(name||'').replace(/'/g,'')}','SKIP_F1')"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🚨 Tahan
@@ -4955,6 +4994,8 @@ function tahanTiket(ticket, name, alasan){
     ? 'Tiket sudah tercatat naik kapal — ditahan petugas (curiga tiket dioper)'
     : alasan==='TAK_DIKENAL'
     ? 'Tiket tidak ada di manifes — ditahan petugas (curiga tiket tidak sah)'
+    : alasan==='SKIP_F1'
+    ? 'Belum lewat Filter 1 — ditahan petugas untuk verifikasi'
     : 'Ditahan petugas untuk verifikasi';
 
   // Catat ke dupAlerts (alert duplikat/pelanggaran)
@@ -5035,6 +5076,50 @@ function catatPenumpangLanjutan(ticket){
       <div class="r-name">Tiket ${ticket}</div>
       <div class="r-info">Diizinkan masuk · Tercatat sebagai lanjutan</div>`;
   }
+  setTimeout(()=>{ tutupHasilScan(); }, 2000);
+}
+
+// Konfirmasi naik untuk penumpang yang ADA di manifes tapi belum lewat Filter 1.
+// Dipakai pada keputusan F2 (CEK_NAIK_LANGSUNG).
+function konfirmasiNaikLangsung(ticket, name){
+  if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
+  const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
+
+  // Tandai penumpang di manifes lokal sebagai naik
+  const pax = S.manifest.find(p=>{
+    const t=(p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+    return t===ticket.toUpperCase();
+  });
+  if(pax) pax._status='naik';
+
+  // Catat NAIK ke scan log (dengan catatan tidak lewat F1) sebagai jejak audit
+  const entry = {
+    time: now, ticket, name: name||getName(pax)||'—',
+    pos: S.currentPos, status: 'NAIK',
+    info: 'Dikonfirmasi naik oleh petugas · Tidak lewat Filter 1',
+    gender:'', kategori:'',
+    shipType: (pax && pax._tipeKapal) ? pax._tipeKapal : S.shipType,
+    sesiId: S.currentSesiId || getSesiId(),
+    namaKapal: S.ship.name||'',
+    voyage: S.ship.voyage||'',
+    petugas: S.petugas || '',
+  };
+  S.scanLog.unshift(entry);
+  if(S.scanLog.length>500) S.scanLog.pop();
+  saveState();
+  sbAddLog({...entry, _sesiId: entry.sesiId});
+
+  const box = document.getElementById('result-box');
+  if(box){
+    box.className = 'result-box ok';
+    box.innerHTML = `
+      <div class="r-icon">🚢</div>
+      <div class="r-status" style="color:var(--teal)">NAIK KAPAL — DIKONFIRMASI</div>
+      <div class="r-name">${name||'—'}</div>
+      <div class="r-info">Dikonfirmasi naik petugas · Tanpa lewat Filter 1</div>`;
+  }
+  updateDashCounters();
+  updateInfografis();
   setTimeout(()=>{ tutupHasilScan(); }, 2000);
 }
 
