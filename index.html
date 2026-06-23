@@ -4695,9 +4695,11 @@ async function saveShipDariManifes2(){
   updateChecklist();
   renderDashboardMultiKapal();
 
-  // Sembunyikan form extra
+  // Sembunyikan & kosongkan form extra agar penambahan kapal berikutnya mulai bersih
   const el = document.getElementById('manifes-form-kapal-extra');
   if(el) el.style.display = 'none';
+  ['mf2-ship-name','mf2-ship-voyage','mf2-ship-route','mf2-ship-dermaga','mf2-ship-time']
+    .forEach(id=>{ const f=document.getElementById(id); if(f) f.value=''; });
   showToast(`✅ ${nama} ditambahkan`,'success');
 }
 
