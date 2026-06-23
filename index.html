@@ -799,6 +799,12 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
                               border-radius:8px;font-size:13px;box-sizing:border-box"/>
               </div>
             </div>
+            <div style="margin-bottom:12px">
+              <label class="slabel">Jam Berangkat</label>
+              <input type="time" id="mf2-ship-time"
+                     style="width:100%;padding:9px;border:1.5px solid var(--gray-200);
+                            border-radius:8px;font-size:13px;box-sizing:border-box"/>
+            </div>
             <button class="btn btn-primary" style="width:100%;padding:12px;font-size:13px;font-weight:700"
                     onclick="saveShipDariManifes2()">
               ➕ Tambah Kapal Ini
@@ -4671,6 +4677,7 @@ async function saveShipDariManifes2(){
   const voyage  = document.getElementById('mf2-ship-voyage').value.trim();
   const tipe    = document.getElementById('mf2-ship-type').value;
   const rute    = document.getElementById('mf2-ship-route').value.trim();
+  const jam     = document.getElementById('mf2-ship-time').value;
   const dermaga = document.getElementById('mf2-ship-dermaga').value.trim();
 
   if(!nama || !voyage){
@@ -4679,7 +4686,7 @@ async function saveShipDariManifes2(){
   }
 
   showToast('⏳ Menambahkan kapal...','warning');
-  const sesi = await sbTambahKapal({ nama_kapal:nama, voyage, tipe_kapal:tipe, rute, jam_etd:'', dermaga });
+  const sesi = await sbTambahKapal({ nama_kapal:nama, voyage, tipe_kapal:tipe, rute, jam_etd:jam, dermaga });
   if(!sesi){ showToast('❌ Gagal menambahkan kapal','error'); return; }
 
   await refreshKapalAktif();
