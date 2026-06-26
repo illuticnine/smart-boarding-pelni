@@ -566,6 +566,8 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
   <!-- INFOGRAFIS PETUGAS -->
   <div id="petugas-infografis">
     <div class="infog-title" id="infog-title">📊 Statistik Embarkasi</div>
+    <div id="infog-action" style="display:none;border-radius:10px;padding:9px 12px;
+         margin-bottom:12px;font-size:12px;font-weight:600;line-height:1.45"></div>
     <div class="infog-stats f1" id="infog-f1-stats">
       <div class="infog-stat">
         <div class="infog-num green" id="infog-f1-lewat">0</div>
@@ -965,6 +967,8 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
               <div class="stat-label">Belum</div>
             </div>
           </div>
+          <div id="m-action" style="display:none;border-radius:10px;padding:8px 11px;margin-top:8px;
+               font-size:12px;font-weight:600;line-height:1.4"></div>
           <div id="manifes-loaded-time"
                style="font-size:10px;color:var(--gray-400);margin-top:6px;display:none">
             📅 Dimuat: —
@@ -1147,6 +1151,9 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
           <div class="stat-label">Duplikat</div>
         </div>
       </div>
+      <div id="d-bermasalah-gab" style="display:none;background:#FCE8E6;border:1px solid #F5C6C2;
+                  border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12px;
+                  color:#C62828;font-weight:700"></div>
       <div style="margin-top:12px">
         <div style="display:flex;justify-content:space-between;
                     font-size:12px;color:var(--gray-600);margin-bottom:5px">
@@ -3226,6 +3233,55 @@ async function refreshStatusFromSheets(){
 // ══════════════════════════════════════
 // INFOGRAFIS PETUGAS
 // ══════════════════════════════════════
+// ── Helper: hitung mundur ke ETD & banner aksi ────────────────
+function menitKeETD(jamEtd){
+  if(!jamEtd || !/^\d{1,2}:\d{2}/.test(jamEtd)) return null;
+  const [h,m] = jamEtd.split(':').map(Number);
+  const now = new Date();
+  const etd = new Date(now); etd.setHours(h, m, 0, 0);
+  return Math.round((etd - now)/60000); // menit (negatif bila sudah lewat)
+}
+function fmtETD(menit){
+  if(menit==null) return '';
+  if(menit < 0)  return `lewat ${Math.abs(menit)} mnt`;
+  if(menit===0)  return 'sekarang';
+  return `${menit} mnt lagi`;
+}
+function etdMenitTerdekat(kapalArr){
+  const vals = (kapalArr||[]).map(k=>menitKeETD(k.jam_etd)).filter(v=>v!=null);
+  return vals.length ? Math.min(...vals) : null;
+}
+function setActionBanner(html, level){
+  const el = document.getElementById('infog-action');
+  if(!el) return;
+  const C = {
+    ok:     ['rgba(105,240,174,.15)','#69F0AE','#C8F7DC'],
+    warn:   ['rgba(255,215,64,.16)', '#FFD740','#FFECB3'],
+    urgent: ['rgba(255,110,110,.20)','#FF6E6E','#FFD5D5'],
+  }[level] || ['rgba(255,255,255,.10)','rgba(255,255,255,.4)','#fff'];
+  el.style.display    = 'block';
+  el.style.background  = C[0];
+  el.style.borderLeft  = '3px solid ' + C[1];
+  el.style.color       = C[2];
+  el.innerHTML         = html;
+}
+
+// Banner ETD per kapal di dashboard admin (muncul hanya saat mendesak)
+function etdBannerKapal(jamEtd, sisa){
+  if(sisa<=0) return '';
+  const menit = menitKeETD(jamEtd);
+  if(menit==null) return '';
+  if(menit < 0)
+    return `<div style="background:#FFF3E0;border:1px solid #FFE0B2;border-radius:10px;
+            padding:8px 11px;margin-bottom:12px;font-size:11px;color:#BF4A00;font-weight:700">
+            ⏰ ETD terlewat (${fmtETD(menit)}) · ${sisa} belum naik — perlu keputusan: tahan atau berangkat.</div>`;
+  if(menit <= 20)
+    return `<div style="background:#FCE8E6;border:1px solid #F5C6C2;border-radius:10px;
+            padding:8px 11px;margin-bottom:12px;font-size:11px;color:#C62828;font-weight:700">
+            🔴 ETD ${fmtETD(menit)} · ${sisa} belum naik — dahulukan & koordinasikan percepatan boarding.</div>`;
+  return '';
+}
+
 function updateInfografis(){
   const box = document.getElementById('petugas-infografis');
   if(!box) return;
@@ -3248,12 +3304,14 @@ function updateInfografis(){
 async function updateInfografisF1(){
   document.getElementById('infog-f1-stats').style.display='grid';
   document.getElementById('infog-f2-stats').style.display='none';
-  document.getElementById('infog-title').textContent='🚪 Filter 1 — Gerbang Trestle';
+  document.getElementById('infog-title').textContent='🚪 FILTER 1 — PANTAU LAJU TRESTLE';
 
   const se = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+  const ban = document.getElementById('infog-action');
 
   if(!sb || !S.kapalAktif || S.kapalAktif.length === 0){
     se('infog-f1-lewat', 0); se('infog-f1-sisa', 0); se('infog-f1-dup', 0);
+    if(ban) ban.style.display='none';
     return;
   }
 
@@ -3269,6 +3327,7 @@ async function updateInfografisF1(){
   const rows    = scans || [];
   const lewatF1 = rows.filter(r=>r.pos==='F1' && (r.status==='OK'||r.status==='NAIK')).length;
   const dup     = rows.filter(r=>r.status==='DUPLIKAT').length;
+  const bermasalah = rows.filter(r=>isProblemStatus(r.status)).length;
   const belum   = Math.max(0, totalGab - lewatF1);
   const pct     = totalGab > 0 ? Math.round(lewatF1/totalGab*100) : 0;
 
@@ -3282,6 +3341,23 @@ async function updateInfografisF1(){
   if(bar) bar.style.width = pct+'%';
   se('infog-prog-label', lewatF1+' dari '+totalGab+' penumpang lewat F1');
   se('infog-prog-pct',   pct+'%');
+
+  // ── Banner aksi F1 ──
+  const menit  = etdMenitTerdekat(S.kapalAktif);
+  const etdTxt = menit!=null ? ` · ETD ${fmtETD(menit)}` : '';
+  let level, msg;
+  if(totalGab<=0){ level='warn'; msg='Menunggu data manifes kapal aktif…'; }
+  else if(belum<=0){ level='ok'; msg='✅ Semua penumpang sudah lewat Trestle — fokus pantau tiket bermasalah & arus balik.'; }
+  else if(menit!=null && menit<=20){ level='urgent'; msg=`🔴 ${belum} penumpang belum lewat Trestle${etdTxt} — percepat pemeriksaan & umumkan boarding.`; }
+  else if(pct>=80){ level='ok'; msg=`🟢 Hampir tuntas — tinggal ${belum} penumpang menuju Trestle${etdTxt}.`; }
+  else { level='warn'; msg=`🟠 ${belum} penumpang belum lewat Trestle${etdTxt} — pantau & jaga laju antrean.`; }
+  const extra=[];
+  if(dup>0) extra.push(`🚨 ${dup} alert duplikat`);
+  if(bermasalah>0) extra.push(`🚫 ${bermasalah} tiket bermasalah — tinjau di Log`);
+  setActionBanner(
+    msg + (extra.length?`<div style="margin-top:5px;font-weight:700">${extra.join(' &nbsp;·&nbsp; ')}</div>`:''),
+    (bermasalah>0 && level==='ok') ? 'warn' : level
+  );
 }
 
 // F2: dari S.manifest lokal (sudah benar — F2 terkunci ke 1 kapal yang dipilih)
@@ -3293,10 +3369,10 @@ async function updateInfografisF2(){
 
   document.getElementById('infog-f1-stats').style.display='none';
   document.getElementById('infog-f2-stats').style.display='grid';
-  document.getElementById('infog-title').textContent='⛵ Filter 2 — Tangga Kapal';
+  document.getElementById('infog-title').textContent='⛵ FILTER 2 — PASTIKAN SEMUA NAIK';
 
   const total = S.manifest.length;
-  let naik=0, dermaga=0, dup=0, fromSupabase=false;
+  let naik=0, dermaga=0, dup=0, bermasalah=0, fromSupabase=false;
 
   const sesiId = S.currentSesiId;
   if(sb && sesiId){
@@ -3317,6 +3393,7 @@ async function updateInfografisF2(){
       });
       Object.values(best).forEach(s=>{ if(s==='naik') naik++; else if(s==='dermaga') dermaga++; });
       dup = rows.filter(r=>r.status==='DUPLIKAT').length;
+      bermasalah = rows.filter(r=>isProblemStatus(r.status)).length;
       fromSupabase = true;
     }catch(e){ /* jatuh ke fallback lokal di bawah */ }
   }
@@ -3326,6 +3403,7 @@ async function updateInfografisF2(){
     naik    = S.manifest.filter(p=>p._status==='naik').length;
     dermaga = S.manifest.filter(p=>p._status==='dermaga').length;
     dup     = S.dupAlerts.length;
+    bermasalah = S.scanLog.filter(l=>isProblemStatus(l.status)).length;
   }
 
   const belum = Math.max(0, total - naik - dermaga);
@@ -3344,6 +3422,26 @@ async function updateInfografisF2(){
   if(bar) bar.style.width = pct+'%';
   se('infog-prog-label', naik+' dari '+total+' penumpang naik');
   se('infog-prog-pct',   pct+'%');
+
+  // ── Banner aksi F2 ──
+  const etdKapal = (S.kapalAktif.find(k=>k.sesi_id===sesiId)||{}).jam_etd;
+  const menit  = menitKeETD(etdKapal);
+  const etdTxt = menit!=null ? ` · ETD ${fmtETD(menit)}` : '';
+  let level, msg;
+  if(total<=0){ level='warn'; msg='Belum ada manifes untuk kapal ini — pilih/aktifkan kapal dulu.'; }
+  else if(belum<=0){ level='ok'; msg='✅ Seluruh penumpang sudah naik kapal — siap berangkat.'; }
+  else if(dermaga>0 && menit!=null && menit<=20){ level='urgent'; msg=`🔴 ${dermaga} penumpang sudah di dermaga tapi belum naik${etdTxt} — arahkan segera ke tangga kapal.`; }
+  else if(menit!=null && menit<=20){ level='urgent'; msg=`🔴 ${belum} penumpang belum naik${etdTxt} — percepat boarding / panggil nama tertinggal.`; }
+  else if(pct>=80){ level='ok'; msg=`🟢 Hampir tuntas — tinggal ${belum} penumpang belum naik${etdTxt}.`; }
+  else { level='warn'; msg=`🟠 ${belum} penumpang belum naik${etdTxt} — lanjutkan boarding.`; }
+  const extra=[];
+  if(dermaga>0 && !(menit!=null && menit<=20)) extra.push(`🚶 ${dermaga} menunggu di dermaga`);
+  if(dup>0) extra.push(`🚨 ${dup} alert duplikat`);
+  if(bermasalah>0) extra.push(`🚫 ${bermasalah} tiket bermasalah — tinjau di Log`);
+  setActionBanner(
+    msg + (extra.length?`<div style="margin-top:5px;font-weight:700">${extra.join(' &nbsp;·&nbsp; ')}</div>`:''),
+    (bermasalah>0 && level==='ok') ? 'warn' : level
+  );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4417,16 +4515,17 @@ async function _renderDashboardMultiKapalInner(container){
     const f1    = scans.filter(r=>r.pos==='F1'&&r.status==='OK').length;
     const naik  = scans.filter(r=>r.status==='NAIK').length;
     const dup   = scans.filter(r=>r.status==='DUPLIKAT').length;
+    const bermasalah = scans.filter(r=>isProblemStatus(r.status)).length;
     const total = kapal.total_manifes || 0;
     const sisa  = Math.max(0, total - naik);
     const pct   = total > 0 ? Math.round(naik/total*100) : 0;
     // Warna progress berdasarkan persentase
     const pctColor = pct >= 90 ? '#69F0AE' : pct >= 60 ? '#FFD740' : '#FF7043';
-    return { kapal, f1, naik, sisa, total, pct, dup, pctColor };
+    return { kapal, f1, naik, sisa, total, pct, dup, bermasalah, pctColor };
   }));
 
   // ── Render card per kapal ──────────────────────────────────
-  container.innerHTML = cards.map(({kapal, f1, naik, sisa, total, pct, dup, pctColor}) => `
+  container.innerHTML = cards.map(({kapal, f1, naik, sisa, total, pct, dup, bermasalah, pctColor}) => `
     <div style="border-radius:16px;margin-bottom:12px;overflow:hidden;
                 box-shadow:0 4px 20px rgba(0,0,0,.12)">
 
@@ -4479,6 +4578,13 @@ async function _renderDashboardMultiKapalInner(container){
           </div>
         </div>
 
+        ${etdBannerKapal(kapal.jam_etd, sisa)}
+
+        ${bermasalah>0 ? `<div style="background:#FCE8E6;border:1px solid #F5C6C2;border-radius:10px;
+                    padding:8px 11px;margin-bottom:12px;font-size:11px;color:#C62828;font-weight:700">
+          🚫 ${bermasalah} tiket bermasalah (tak terdaftar / ditahan) — tinjau di tab Log
+        </div>` : ''}
+
         <!-- Progress bar -->
         <div style="display:flex;justify-content:space-between;
                     font-size:11px;color:#666;margin-bottom:5px">
@@ -4506,6 +4612,7 @@ async function _renderDashboardMultiKapalInner(container){
   const naikGab  = cards.reduce((s,d)=>s+d.naik,  0);
   const f1Gab    = cards.reduce((s,d)=>s+d.f1,    0);
   const dupGab   = cards.reduce((s,d)=>s+d.dup,   0);
+  const bermasalahGab = cards.reduce((s,d)=>s+(d.bermasalah||0), 0);
   const pctGab   = totalGab > 0 ? Math.round(naikGab/totalGab*100) : 0;
 
   const se = (id,val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
@@ -4514,6 +4621,15 @@ async function _renderDashboardMultiKapalInner(container){
   se('d-f1',     f1Gab);
   se('d-dup',    dupGab);
   se('prog-pct', pctGab+'%');
+  const bgEl = document.getElementById('d-bermasalah-gab');
+  if(bgEl){
+    if(bermasalahGab>0){
+      bgEl.style.display='block';
+      bgEl.innerHTML = `🚫 ${bermasalahGab} tiket bermasalah di seluruh kapal — tinjau di tab Log`;
+    } else {
+      bgEl.style.display='none';
+    }
+  }
   const pb = document.getElementById('prog-bar');
   if(pb) pb.style.width = pctGab+'%';
 
@@ -5584,11 +5700,29 @@ function parseCSV(text){
 function updateManifestSummary(){
   const total=S.manifest.length;
   const boarded=S.manifest.filter(p=>p._status==='naik').length;
+  const dermaga=S.manifest.filter(p=>p._status==='dermaga').length;
+  const perhatian=S.manifest.filter(p=>p._status==='perhatian').length;
+  const pending=total-boarded;
   const se=(id,val,prop='textContent')=>{ const el=document.getElementById(id); if(el) el[prop]=val; };
   se('m-total',   total);
   se('m-boarded', boarded);
-  se('m-pending', total-boarded);
+  se('m-pending', pending);
   se('manifest-summary', total>0?'block':'none', 'style.display');
+
+  // Baris aksi: ubah angka jadi arahan tindakan
+  const el=document.getElementById('m-action');
+  if(el){
+    if(total<=0){ el.style.display='none'; return; }
+    let bg,bd,tc,msg;
+    if(pending<=0){ bg='#E6F4EA'; bd='#2E7D32'; tc='#1B5E20'; msg='✅ Semua penumpang sudah naik kapal.'; }
+    else { bg='#FFF3E0'; bd='#E65100'; tc='#BF4A00'; msg=`🟠 ${pending} penumpang belum naik — pantau & koordinasikan dengan pos Filter 2.`; }
+    const extra=[];
+    if(dermaga>0)   extra.push(`🚶 ${dermaga} di area dermaga`);
+    if(perhatian>0){ extra.push(`⚠️ ${perhatian} perlu dicek`); bg='#FFF3E0'; bd='#E65100'; tc='#BF4A00'; }
+    el.style.display='block';
+    el.style.background=bg; el.style.borderLeft='3px solid '+bd; el.style.color=tc;
+    el.innerHTML=msg + (extra.length?`<div style="margin-top:4px;font-weight:700">${extra.join(' · ')}</div>`:'');
+  }
 }
 
 function renderManifestTable(){
