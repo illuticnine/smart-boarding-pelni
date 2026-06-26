@@ -1677,10 +1677,30 @@ function loadState(){
       if(!Array.isArray(S.izinKeluar)) S.izinKeluar=[];
       if(!Array.isArray(S.lanjutanLog)) S.lanjutanLog=[];
     }
+    // Muat manifes dari penyimpanan terpisah (jika sudah dipisah)
+    const m = localStorage.getItem('smart2_manifest');
+    if(m){
+      S.manifest = JSON.parse(m);
+      const arr = S.manifest || [];
+      _manifestSig = arr.length + '|' + (arr[0] ? (arr[0]['No Tiket'] || arr[0].NO_TIKET || '') : '');
+    }
   }catch(e){}
 }
+let _manifestSig = null;
 function saveState(){
-  try{ localStorage.setItem('smart2',JSON.stringify(S)); }catch(e){}
+  try{
+    // State utama TANPA manifes besar → penulisan cepat, tidak membekukan layar saat scan
+    const { manifest, ...slim } = S;
+    localStorage.setItem('smart2', JSON.stringify(slim));
+    // Manifes disimpan ke kunci terpisah HANYA bila isinya berubah (upload/hapus/dedupe),
+    // bukan setiap kali memindai — mencegah freeze pada manifes besar (400+).
+    const m = S.manifest || [];
+    const sig = m.length + '|' + (m[0] ? (m[0]['No Tiket'] || m[0].NO_TIKET || '') : '');
+    if(sig !== _manifestSig){
+      localStorage.setItem('smart2_manifest', JSON.stringify(m));
+      _manifestSig = sig;
+    }
+  }catch(e){}
 }
 
 // ══════════════════════════════════════════
