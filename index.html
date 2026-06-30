@@ -640,6 +640,11 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       <span>Tekan tombol untuk mulai scan</span>
     </div>
     <div id="qr-reader" style="display:none"></div>
+    <div id="scan-idle" class="scan-placeholder" style="display:none;cursor:pointer" onclick="resumeFromIdle()">
+      <span style="font-size:36px">⏸️</span>
+      <span style="font-weight:700">Kamera dijeda untuk hemat baterai</span>
+      <span style="font-size:12px;color:var(--gray-500)">Tap di sini untuk lanjut scan</span>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px">
       <button class="btn btn-primary" id="btn-start" onclick="startCameraScan()">▶ Mulai Scan</button>
       <button class="btn btn-outline" id="btn-stop" onclick="stopCameraScan()" style="display:none">⏹ Stop</button>
@@ -1683,6 +1688,7 @@ function loadState(){
       // Pastikan array baru ter-init untuk data lama
       if(!Array.isArray(S.izinKeluar)) S.izinKeluar=[];
       if(!Array.isArray(S.lanjutanLog)) S.lanjutanLog=[];
+      if(!Array.isArray(S.goshowLog)) S.goshowLog=[];
     }
     // Muat manifes dari penyimpanan terpisah (jika sudah dipisah)
     const m = localStorage.getItem('smart2_manifest');
@@ -1762,6 +1768,9 @@ function showPage(id){
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+id)?.classList.add('active');
   document.getElementById('tab-'+id).classList.add('active');
+  // Hemat baterai: hentikan kamera bila berpindah dari halaman Scan
+  if(id!=='scan'){ try{ stopCameraScan(); }catch(e){} }
+  if(id==='scan'||id==='dashboard'||id==='manifest'){ try{ refreshGoshowCounts(); }catch(e){} }
   if(id==='dashboard'){
     updateDashboard();
     // Admin: tampilkan bar refresh, render card multi-kapal, auto-refresh
@@ -1838,6 +1847,7 @@ function setScanMode(m){
 // ══════════════════════════════════════════
 let qrScanner = null;
 let _scanStarting = false;
+const SCAN_FPS = 6;               // fps kamera (turun dari 10 → hemat baterai & CPU; bisa disetel)
 let _scanBusy = false;            // true saat processTicket sedang jalan
 let _keputusanPending = false;    // true saat layar keputusan F1 menunggu aksi petugas
 async function startCameraScan(){
@@ -1865,7 +1875,7 @@ async function startCameraScan(){
     return;
   }
   let _scanBusy = false;
-  qrScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:230,height:230}},
+  qrScanner.start({facingMode:'environment'},{fps:SCAN_FPS,qrbox:{width:230,height:230}},
     async (txt)=>{
       if(_scanBusy || _keputusanPending) return;  // jangan proses scan baru saat sibuk / menunggu keputusan
       _scanBusy = true;
@@ -1874,6 +1884,7 @@ async function startCameraScan(){
         await processTicket(txt.trim());   // TUNGGU selesai (termasuk query Supabase)
       }catch(e){ console.warn('processTicket error:', e); }
       _scanBusy = false;
+      armIdleTimer();   // ada aktivitas scan → reset hitung mundur idle
       // Jika ada layar keputusan menunggu, JANGAN resume — biarkan petugas menekan tombol dulu.
       // Resume akan dilakukan oleh fungsi keputusan setelah selesai.
       if(!_keputusanPending){
@@ -1884,6 +1895,8 @@ async function startCameraScan(){
     },()=>{}
   ).then(()=>{
     _scanStarting = false;
+    _idlePaused = false;
+    armIdleTimer();
   }).catch(err=>{
     _scanStarting = false;
     showToast('Kamera tidak bisa diakses · '+(err.message||''),'error');
@@ -1891,6 +1904,8 @@ async function startCameraScan(){
   });
 }
 function stopCameraScan(){
+  disarmIdleTimer(); _idlePaused = false;
+  const si = document.getElementById('scan-idle'); if(si) si.style.display='none';
   if(qrScanner){ qrScanner.stop().then(()=>{ qrScanner.clear(); qrScanner=null; }).catch(()=>{ qrScanner=null; }); }
   _scanBusy = false;
   _keputusanPending = false;
@@ -1899,6 +1914,34 @@ function stopCameraScan(){
   document.getElementById('qr-reader').style.display='none';
   document.getElementById('btn-start').style.display='inline-flex';
   document.getElementById('btn-stop').style.display='none';
+}
+
+// ── AUTO-PAUSE IDLE: matikan kamera bila tak ada scan beberapa saat (hemat baterai) ──
+let _idleTimer = null, _idlePaused = false;
+const IDLE_MS = 90000;  // 90 detik tanpa scan → kamera dijeda
+function armIdleTimer(){
+  clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(idlePauseCamera, IDLE_MS);
+}
+function disarmIdleTimer(){ clearTimeout(_idleTimer); }
+function idlePauseCamera(){
+  if(!qrScanner) return;                              // kamera memang tidak aktif
+  if(_scanBusy || _keputusanPending){ armIdleTimer(); return; }  // sedang sibuk → tunda
+  // Hentikan kamera sepenuhnya (lepas sensor) demi hemat baterai maksimal
+  try{ qrScanner.stop().then(()=>{ try{qrScanner.clear();}catch(e){} qrScanner=null; }).catch(()=>{ qrScanner=null; }); }
+  catch(e){ qrScanner=null; }
+  _scanBusy=false; _scanStarting=false; _idlePaused=true;
+  document.getElementById('qr-reader').style.display='none';
+  document.getElementById('scan-placeholder').style.display='none';
+  document.getElementById('scan-idle').style.display='flex';
+  document.getElementById('btn-start').style.display='none';
+  document.getElementById('btn-stop').style.display='none';
+  try{ showToast('⏸️ Kamera dijeda untuk hemat baterai','info'); }catch(e){}
+}
+function resumeFromIdle(){
+  _idlePaused=false;
+  const si=document.getElementById('scan-idle'); if(si) si.style.display='none';
+  startCameraScan();   // tampilkan kamera kembali & arm ulang timer idle
 }
 
 // ══════════════════════════════════════════
@@ -2377,6 +2420,11 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
         🚨 Tahan
       </button>
     </div>
+    <button onclick="konfirmasiGoShow('${lastScannedTicket}')"
+      style="margin-top:8px;width:100%;padding:11px;border:none;border-radius:8px;
+             background:#E65100;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+      🎫 Go-Show (beli tiket di loket)
+    </button>
     <button onclick="tutupHasilScan()"
       style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
              border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
@@ -2433,6 +2481,11 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
         🚨 Tahan
       </button>
     </div>
+    <button onclick="konfirmasiGoShow('${lastScannedTicket}')"
+      style="margin-top:8px;width:100%;padding:11px;border:none;border-radius:8px;
+             background:#E65100;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+      🎫 Go-Show (beli tiket di loket)
+    </button>
     <button onclick="tutupHasilScan()"
       style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
              border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
@@ -3214,6 +3267,7 @@ function startRealtimeSync(){
     _realtimeDebounce = setTimeout(async ()=>{
       if(currentRole === null) return;
       try{ await syncStatusFromSupabase(true); }catch(e){}
+      await refreshGoshowCounts();
       updateInfografis();
       updateDashCounters();
     }, 350);
@@ -3318,18 +3372,22 @@ async function updateInfografisF1(){
   // Total manifes gabungan semua kapal aktif
   const totalGab = S.kapalAktif.reduce((s,k)=>s+(k.total_manifes||0), 0);
 
-  // Hitung scan F1 gabungan dari semua sesi aktif sekaligus
+  // Hitung via query COUNT (head:true) — tanpa menarik ratusan baris, beban ringan & konstan
   const sesiIds = S.kapalAktif.map(k=>k.sesi_id);
-  const { data: scans } = await sb.from('scan_log')
-    .select('pos,status,sesi_id')
-    .in('sesi_id', sesiIds);
-
-  const rows    = scans || [];
-  const lewatF1 = rows.filter(r=>r.pos==='F1' && (r.status==='OK'||r.status==='NAIK')).length;
-  const dup     = rows.filter(r=>r.status==='DUPLIKAT').length;
-  const bermasalah = rows.filter(r=>isProblemStatus(r.status)).length;
-  const belum   = Math.max(0, totalGab - lewatF1);
-  const pct     = totalGab > 0 ? Math.round(lewatF1/totalGab*100) : 0;
+  const cntF1 = async (apply)=>{
+    let q = sb.from('scan_log').select('*', { count:'exact', head:true }).in('sesi_id', sesiIds);
+    q = apply(q);
+    const { count } = await q;
+    return count || 0;
+  };
+  const [lewatF1, dup, bermasalah] = await Promise.all([
+    cntF1(q=>q.eq('pos','F1').in('status',['OK','NAIK'])),
+    cntF1(q=>q.eq('status','DUPLIKAT')),
+    cntF1(q=>q.in('status', PROBLEM_STATUSES)),
+  ]);
+  const totalEff = totalGab + _goshowCount;   // total termasuk penumpang go-show
+  const belum   = Math.max(0, totalEff - lewatF1);
+  const pct     = totalEff > 0 ? Math.round(lewatF1/totalEff*100) : 0;
 
   se('infog-f1-lewat', lewatF1);
   se('infog-f1-sisa',  belum);
@@ -3339,14 +3397,14 @@ async function updateInfografisF1(){
 
   const bar = document.getElementById('infog-prog-bar');
   if(bar) bar.style.width = pct+'%';
-  se('infog-prog-label', lewatF1+' dari '+totalGab+' penumpang lewat F1');
+  se('infog-prog-label', lewatF1+' dari '+totalEff+' penumpang lewat F1'+(_goshowCount>0?' · +'+_goshowCount+' go-show':''));
   se('infog-prog-pct',   pct+'%');
 
   // ── Banner aksi F1 ──
   const menit  = etdMenitTerdekat(S.kapalAktif);
   const etdTxt = menit!=null ? ` · ETD ${fmtETD(menit)}` : '';
   let level, msg;
-  if(totalGab<=0){ level='warn'; msg='Menunggu data manifes kapal aktif…'; }
+  if(totalEff<=0){ level='warn'; msg='Menunggu data manifes kapal aktif…'; }
   else if(belum<=0){ level='ok'; msg='✅ Semua penumpang sudah lewat Trestle — fokus pantau tiket bermasalah & arus balik.'; }
   else if(menit!=null && menit<=20){ level='urgent'; msg=`🔴 ${belum} penumpang belum lewat Trestle${etdTxt} — percepat pemeriksaan & umumkan boarding.`; }
   else if(pct>=80){ level='ok'; msg=`🟢 Hampir tuntas — tinggal ${belum} penumpang menuju Trestle${etdTxt}.`; }
@@ -3377,23 +3435,22 @@ async function updateInfografisF2(){
   const sesiId = S.currentSesiId;
   if(sb && sesiId){
     try{
-      const { data: scans, error } = await sb.from('scan_log')
-        .select('no_tiket,status')
-        .eq('sesi_id', sesiId);
-      if(error) throw error;
-      const rows = scans || [];
-      // Status terbaik per tiket: NAIK (2) > OK/dermaga (1)
-      const rank = { naik:2, dermaga:1 };
-      const best = {};
-      rows.forEach(r=>{
-        const t = String(r.no_tiket||'').trim(); if(!t) return;
-        const ms = r.status==='NAIK' ? 'naik' : (r.status==='OK' ? 'dermaga' : null);
-        if(!ms) return;
-        if((rank[ms]||0) > (rank[best[t]]||0)) best[t] = ms;
-      });
-      Object.values(best).forEach(s=>{ if(s==='naik') naik++; else if(s==='dermaga') dermaga++; });
-      dup = rows.filter(r=>r.status==='DUPLIKAT').length;
-      bermasalah = rows.filter(r=>isProblemStatus(r.status)).length;
+      const cntS = async (apply)=>{
+        let q = sb.from('scan_log').select('*', { count:'exact', head:true }).eq('sesi_id', sesiId);
+        q = apply(q);
+        const { count } = await q;
+        return count || 0;
+      };
+      const [naikC, okC, dupC, bermasalahC] = await Promise.all([
+        cntS(q=>q.eq('status','NAIK')),
+        cntS(q=>q.eq('status','OK')),
+        cntS(q=>q.eq('status','DUPLIKAT')),
+        cntS(q=>q.in('status', PROBLEM_STATUSES)),
+      ]);
+      naik       = naikC;
+      dermaga    = Math.max(0, okC - naikC); // sudah lewat F1 (OK) namun belum NAIK
+      dup        = dupC;
+      bermasalah = bermasalahC;
       fromSupabase = true;
     }catch(e){ /* jatuh ke fallback lokal di bawah */ }
   }
@@ -3406,8 +3463,9 @@ async function updateInfografisF2(){
     bermasalah = S.scanLog.filter(l=>isProblemStatus(l.status)).length;
   }
 
-  const belum = Math.max(0, total - naik - dermaga);
-  const pct   = total>0 ? Math.round(naik/total*100) : 0;
+  const totalEff = total + _goshowCount;   // total termasuk penumpang go-show
+  const belum = Math.max(0, totalEff - naik - dermaga);
+  const pct   = totalEff>0 ? Math.round(naik/totalEff*100) : 0;
 
   se('infog-f2-belum',   belum);
   se('infog-f2-dermaga', dermaga);
@@ -3420,7 +3478,7 @@ async function updateInfografisF2(){
 
   const bar = document.getElementById('infog-prog-bar');
   if(bar) bar.style.width = pct+'%';
-  se('infog-prog-label', naik+' dari '+total+' penumpang naik');
+  se('infog-prog-label', naik+' dari '+totalEff+' penumpang naik'+(_goshowCount>0?' · +'+_goshowCount+' go-show':''));
   se('infog-prog-pct',   pct+'%');
 
   // ── Banner aksi F2 ──
@@ -3946,16 +4004,26 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
 // SYNC STATUS DARI SUPABASE
 // Fungsi terpusat — dipanggil admin & petugas
 // ══════════════════════════════════════
+let _lastSyncTs = null, _lastSyncSesi = null;  // untuk sinkronisasi inkremental
 async function syncStatusFromSupabase(silent = true){
   if(!sb || !S.manifest.length) return false;
   try{
-    const data = await sbGetScanStats();
-    if(!data.rows || data.rows.length === 0) return false;
+    const sesiId = getSesiId();
+    if(sesiId !== _lastSyncSesi){ _lastSyncSesi = sesiId; _lastSyncTs = null; } // ganti kapal → sinkron penuh sekali
+    let q = sb.from('scan_log')
+      .select('no_tiket,status,created_at')
+      .eq('sesi_id', sesiId)
+      .order('created_at', { ascending: true });
+    if(_lastSyncTs) q = q.gt('created_at', _lastSyncTs);
+    const { data: rows, error } = await q;
+    if(error) throw error;
+    if(!rows || rows.length === 0) return false;
+    _lastSyncTs = rows[rows.length - 1].created_at;   // tandai titik sinkron terakhir
 
     const statusRank = { 'naik':3, 'dermaga':2, 'perhatian':1 };
     const bestStatus = {};
 
-    data.rows.forEach(log => {
+    rows.forEach(log => {
       const ticket    = String(log.no_tiket||log['No Tiket']||'').trim();
       const rawStatus = String(log.status||log['Status']||'').trim();
       if(!ticket) return;
@@ -3976,9 +4044,10 @@ async function syncStatusFromSupabase(silent = true){
       const pax = S.manifest.find(p =>
         (p['No Tiket']||p.NO_TIKET||'').toString().trim() === ticket
       );
-      if(pax && pax._status !== newStatus){
-        pax._status = newStatus;
-        changed = true;
+      if(pax){
+        const cur = statusRank[pax._status] || 0;
+        const nw  = statusRank[newStatus] || 0;
+        if(nw > cur){ pax._status = newStatus; changed = true; }  // hanya naik tingkat, jangan turunkan
       }
     });
 
@@ -4000,6 +4069,8 @@ async function syncStatusFromSupabase(silent = true){
 // LOG — LOAD DARI SUPABASE
 // ══════════════════════════════════════
 let _sbLogCache = [];  // cache log dari Supabase
+const LOG_RENDER_CAP = 150;  // batasi baris DOM agar tidak freeze saat ratusan scan
+function logPageActive(){ return !!document.getElementById('page-log')?.classList.contains('active'); }
 
 async function loadLogFromSupabase(){
   if(!sb) return;
@@ -4036,6 +4107,7 @@ async function loadLogFromSupabase(){
 function renderLogFromCache(){
   const source = _sbLogCache.length ? _sbLogCache : S.scanLog;
   updateLogProblemSummary(source);
+  if(!logPageActive()) return;   // jangan bangun DOM ratusan baris bila tab Log tak terbuka
   const filter = S.logFilter;
   const filtered = filter === 'all' ? source
     : (filter === 'BERMASALAH' ? source.filter(l => isProblemStatus(l.status))
@@ -4046,7 +4118,7 @@ function renderLogFromCache(){
   if(!filtered.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
 
-  tbody.innerHTML = filtered.map(l => {
+  tbody.innerHTML = filtered.slice(0, LOG_RENDER_CAP).map(l => {
     let badge = '';
     if(l.status==='OK')        badge='<span class="badge bg">✅ F1 Lolos</span>';
     else if(l.status==='NAIK') badge='<span class="badge bt">🚢 Naik Kapal</span>';
@@ -4057,6 +4129,7 @@ function renderLogFromCache(){
     else if(l.status==='CEK_LANJUTAN') badge='<span class="badge ba">🔎 Cek Lanjutan</span>';
     else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
+    if(l.info && String(l.info).indexOf('GO-SHOW')===0) badge='<span class="badge ba">🎫 Go-Show</span>';
     const pc = `<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
     return `<tr>
       <td style="font-size:11px;color:var(--gray-400);white-space:nowrap">${l.time}</td>
@@ -4066,6 +4139,8 @@ function renderLogFromCache(){
       <td>${pc}</td><td>${badge}</td>
     </tr>`;
   }).join('');
+  if(filtered.length > LOG_RENDER_CAP)
+    tbody.innerHTML += `<tr><td colspan="6" style="text-align:center;font-size:11px;color:var(--gray-400);padding:8px">Menampilkan ${LOG_RENDER_CAP} entri terbaru dari ${filtered.length}. Gunakan filter untuk mempersempit.</td></tr>`;
 }
 
 // ══════════════════════════════════════
@@ -5129,6 +5204,7 @@ function tutupHasilScan(){
   // Lepas kunci keputusan & lanjutkan scanner
   _keputusanPending = false;
   try{ if(qrScanner) qrScanner.resume(); }catch(e){}
+  armIdleTimer();   // aktivitas selesai → reset hitung mundur idle
 }
 
 // Izinkan tiket keluar sementara (transit/ambil barang) — boleh masuk lagi tanpa flag
@@ -5360,6 +5436,74 @@ function konfirmasiLanjutanNaikF2(ticket){
   }
   updateDashCounters();
   updateInfografis();
+  setTimeout(()=>{ tutupHasilScan(); }, 2000);
+}
+
+// ══════════════════════════════════════════
+// GO-SHOW (penumpang beli tiket di loket setelah manifes di-upload)
+// ══════════════════════════════════════════
+let _goshowCount = 0;  // jumlah penumpang go-show (distinct) untuk rekonsiliasi total
+
+async function refreshGoshowCounts(){
+  try{
+    if(sb){
+      const sesiIds = (S.kapalAktif && S.kapalAktif.length)
+        ? S.kapalAktif.map(k=>k.sesi_id)
+        : [getSesiId()].filter(Boolean);
+      if(!sesiIds.length){ _goshowCount = (S.goshowLog?S.goshowLog.length:0); return; }
+      const { data } = await sb.from('scan_log')
+        .select('no_tiket').ilike('info','GO-SHOW%').in('sesi_id', sesiIds);
+      const set = new Set((data||[]).map(r=>String(r.no_tiket||'').trim().toUpperCase()));
+      _goshowCount = set.size;
+    } else {
+      _goshowCount = (S.goshowLog?S.goshowLog.length:0);
+    }
+  }catch(e){ _goshowCount = (S.goshowLog?S.goshowLog.length:0); }
+}
+
+// F1 → lolos (OK); F2 → naik (NAIK). Ditandai 'GO-SHOW' di info untuk rekonsiliasi.
+function konfirmasiGoShow(ticket){
+  if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
+  const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
+  const tanggal = new Date().toLocaleDateString('id-ID');
+  const pos  = S.currentPos;
+  const naik = (pos === 'F2');
+  const status = naik ? 'NAIK' : 'OK';
+
+  const entry = {
+    time: now, ticket, name:'Go-Show',
+    pos, status,
+    info:'GO-SHOW · beli di loket, dikonfirmasi petugas',
+    gender:'', kategori:'',
+    shipType: S.shipType,
+    sesiId: S.currentSesiId || getSesiId(),
+    namaKapal: S.ship.name||'',
+    voyage: S.ship.voyage||'',
+    petugas: S.petugas || '',
+  };
+  S.scanLog.unshift(entry);
+  if(S.scanLog.length>500) S.scanLog.pop();
+
+  if(!S.goshowLog) S.goshowLog=[];
+  const key = ticket.trim().toUpperCase();
+  const existing = S.goshowLog.find(g=>String(g.ticket).trim().toUpperCase()===key);
+  if(!existing) S.goshowLog.unshift({ ticket, waktu:now, tanggal, pos, naik, petugas:S.petugas||'—' });
+  else if(naik) existing.naik = true;
+
+  saveState();
+  sbAddLog({...entry, _sesiId: entry.sesiId});
+
+  const box = document.getElementById('result-box');
+  if(box){
+    box.className='result-box ok';
+    box.innerHTML = `
+      <div class="r-icon">🎫</div>
+      <div class="r-status" style="color:#E65100">GO-SHOW — ${naik?'NAIK KAPAL':'LOLOS FILTER 1'}</div>
+      <div class="r-name">Tiket ${ticket}</div>
+      <div class="r-info">Beli di loket · dikonfirmasi petugas ${pos}</div>`;
+  }
+  showToast(`🎫 Go-Show ${naik?'naik kapal':'lolos Filter 1'}: ${ticket}`,'success');
+  refreshGoshowCounts().finally(()=>{ updateDashCounters(); updateInfografis(); updateManifestSummary(); });
   setTimeout(()=>{ tutupHasilScan(); }, 2000);
 }
 
@@ -5698,8 +5842,10 @@ function parseCSV(text){
 }
 
 function updateManifestSummary(){
-  const total=S.manifest.length;
-  const boarded=S.manifest.filter(p=>p._status==='naik').length;
+  const goshow = _goshowCount || 0;
+  const goshowNaik = S.goshowLog ? S.goshowLog.filter(g=>g.naik).length : 0;
+  const total=S.manifest.length + goshow;
+  const boarded=S.manifest.filter(p=>p._status==='naik').length + goshowNaik;
   const dermaga=S.manifest.filter(p=>p._status==='dermaga').length;
   const perhatian=S.manifest.filter(p=>p._status==='perhatian').length;
   const pending=total-boarded;
@@ -5717,6 +5863,7 @@ function updateManifestSummary(){
     if(pending<=0){ bg='#E6F4EA'; bd='#2E7D32'; tc='#1B5E20'; msg='✅ Semua penumpang sudah naik kapal.'; }
     else { bg='#FFF3E0'; bd='#E65100'; tc='#BF4A00'; msg=`🟠 ${pending} penumpang belum naik — pantau & koordinasikan dengan pos Filter 2.`; }
     const extra=[];
+    if(goshow>0)    extra.push(`🎫 ${goshow} go-show`);
     if(dermaga>0)   extra.push(`🚶 ${dermaga} di area dermaga`);
     if(perhatian>0){ extra.push(`⚠️ ${perhatian} perlu dicek`); bg='#FFF3E0'; bd='#E65100'; tc='#BF4A00'; }
     el.style.display='block';
@@ -5866,8 +6013,10 @@ function updateDashCounters(){
   if(gabEl) gabEl.style.display = 'none';
   if(petEl) petEl.style.display = 'block';
 
-  const total = S.manifest.length;
-  const naik  = S.manifest.filter(p=>p._status==='naik').length;
+  const goshow = _goshowCount || 0;
+  const goshowNaik = S.goshowLog ? S.goshowLog.filter(g=>g.naik).length : 0;
+  const total = S.manifest.length + goshow;
+  const naik  = S.manifest.filter(p=>p._status==='naik').length + goshowNaik;
   const f1    = S.scanLog.filter(l=>l.pos==='F1'&&l.status==='OK').length;
   const f2    = S.scanLog.filter(l=>l.pos==='F2'&&l.status==='NAIK').length;
   const pct   = total>0 ? Math.round(naik/total*100) : 0;
@@ -5982,7 +6131,7 @@ function startTransitCam(){
   document.getElementById('tr-btn-start').style.display='none';
   document.getElementById('tr-btn-stop').style.display='inline-flex';
   trQrScanner = new Html5Qrcode('tr-qr-reader');
-  trQrScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:220,height:220}},
+  trQrScanner.start({facingMode:'environment'},{fps:SCAN_FPS,qrbox:{width:220,height:220}},
     (txt)=>{
       processTransitTicket(txt.trim());
       trQrScanner.pause(true);
@@ -6212,6 +6361,7 @@ function filterLog(f,el){
 
 function renderLog(){
   updateLogProblemSummary(S.scanLog);
+  if(!logPageActive()) return;   // hindari bangun DOM ratusan baris bila tab Log tak terbuka
   const filtered = S.logFilter==='all' ? S.scanLog
     : (S.logFilter==='BERMASALAH' ? S.scanLog.filter(l=>isProblemStatus(l.status))
        : S.scanLog.filter(l=>l.status===S.logFilter));
@@ -6219,7 +6369,7 @@ function renderLog(){
   const empty=document.getElementById('log-empty');
   if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
-  tbody.innerHTML=filtered.map(l=>{
+  tbody.innerHTML=filtered.slice(0, LOG_RENDER_CAP).map(l=>{
     let badge='';
     if(l.status==='OK') badge='<span class="badge bg">✅ F1 Lolos</span>';
     else if(l.status==='NAIK') badge='<span class="badge bt">🚢 Naik Kapal</span>';
@@ -6230,6 +6380,7 @@ function renderLog(){
     else if(l.status==='CEK_LANJUTAN') badge='<span class="badge ba">🔎 Cek Lanjutan</span>';
     else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
+    if(l.info && String(l.info).indexOf('GO-SHOW')===0) badge='<span class="badge ba">🎫 Go-Show</span>';
     const pc=`<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
     return `<tr>
       <td style="font-size:11px;color:var(--gray-400);white-space:nowrap">${l.time}</td>
@@ -6239,6 +6390,8 @@ function renderLog(){
       <td>${pc}</td><td>${badge}</td>
     </tr>`;
   }).join('');
+  if(filtered.length > LOG_RENDER_CAP)
+    tbody.innerHTML += `<tr><td colspan="6" style="text-align:center;font-size:11px;color:var(--gray-400);padding:8px">Menampilkan ${LOG_RENDER_CAP} entri terbaru dari ${filtered.length}. Gunakan filter untuk mempersempit.</td></tr>`;
 }
 
 function clearLog(){
