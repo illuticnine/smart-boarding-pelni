@@ -1681,7 +1681,7 @@ function loadState(){
     if(s){
       const saved=JSON.parse(s);
       S={...S,...saved};
-      const validStatuses=['OK','NAIK','DUPLIKAT','TRANSIT','PERHATIAN','TIDAK DIKENAL','IZIN_KELUAR','DITAHAN','CEK_SUDAH_NAIK','CEK_LANJUTAN'];
+      const validStatuses=['OK','NAIK','DUPLIKAT','TRANSIT','PERHATIAN','TIDAK DIKENAL','IZIN_KELUAR','DITAHAN','CEK_SUDAH_NAIK','CEK_LANJUTAN','DIBATALKAN'];
       if(S.scanLog && S.scanLog.some(l=>!validStatuses.includes(l.status))){
         S.scanLog=[]; S.dupAlerts=[];
       }
@@ -2403,10 +2403,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
         🚨 Tahan
       </button>
     </div>
-    <button onclick="tutupHasilScan()"
-      style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
-             border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
-      Lewati tanpa keputusan
+    <button onclick="batalkanScan()"
+      style="margin-top:8px;width:100%;padding:9px;border:1px solid var(--gray-300);
+             border-radius:8px;background:#fff;color:var(--gray-600);font-size:11px;cursor:pointer">
+      ↩️ Batal — salah scan / QR tidak valid
     </button>`;
 
   } else if(status==='CEK_LANJUTAN'){
@@ -2415,9 +2415,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
     <div style="margin:12px 0 8px;padding:10px 12px;background:rgba(106,27,154,.1);border-radius:8px;text-align:left">
       <div style="font-size:12px;font-weight:700;color:#6A1B9A;margin-bottom:6px">🔍 Tiket Tidak Ada di Manifes Pelabuhan Ini</div>
       <div style="font-size:11px;color:var(--gray-700);line-height:1.7">
-        Bisa jadi penumpang lanjutan dari pelabuhan sebelumnya.<br>
-        Verifikasi <b>identitas (KTP)</b> + <b>tiket lanjutan</b> yang sah.<br>
-        Jika cocok → catat sebagai lanjutan. Jika tidak → tahan.
+        Lihat pelabuhan <b>ASAL</b> di atas untuk menentukan:<br>
+        • Asal <b>pelabuhan lain</b> → tekan <b>Penumpang Lanjutan</b>.<br>
+        • <b>Beli tiket di loket hari ini</b> (asal = pelabuhan ini) → tekan <b>Go-Show</b>.<br>
+        Verifikasi KTP + tiket. Jika mencurigakan → <b>Tahan</b>.
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
@@ -2437,10 +2438,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
              background:#E65100;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
       🎫 Go-Show (beli tiket di loket)
     </button>
-    <button onclick="tutupHasilScan()"
-      style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
-             border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
-      Lewati tanpa keputusan
+    <button onclick="batalkanScan()"
+      style="margin-top:8px;width:100%;padding:9px;border:1px solid var(--gray-300);
+             border-radius:8px;background:#fff;color:var(--gray-600);font-size:11px;cursor:pointer">
+      ↩️ Batal — salah scan / QR tidak valid
     </button>`;
   } else if(status==='CEK_NAIK_LANGSUNG'){
     // Penumpang ada di manifes tapi belum lewat F1 → konfirmasi naik vs tahan
@@ -2465,10 +2466,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
         🚨 Tahan
       </button>
     </div>
-    <button onclick="tutupHasilScan()"
-      style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
-             border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
-      Lewati tanpa keputusan
+    <button onclick="batalkanScan()"
+      style="margin-top:8px;width:100%;padding:9px;border:1px solid var(--gray-300);
+             border-radius:8px;background:#fff;color:var(--gray-600);font-size:11px;cursor:pointer">
+      ↩️ Batal — salah scan / QR tidak valid
     </button>`;
   } else if(status==='CEK_LANJUTAN_F2'){
     // F2: tiket tak ada di manifes → penumpang lanjutan (naik) atau tahan
@@ -2476,9 +2477,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
     <div style="margin:12px 0 8px;padding:10px 12px;background:rgba(106,27,154,.1);border-radius:8px;text-align:left">
       <div style="font-size:12px;font-weight:700;color:#6A1B9A;margin-bottom:6px">🔄 Tidak Ada di Manifes</div>
       <div style="font-size:11px;color:var(--gray-700);line-height:1.7">
-        Tiket tidak ada di manifes kapal ini.<br>
-        Bisa jadi <b>penumpang lanjutan</b> dari pelabuhan sebelumnya.<br>
-        Verifikasi tiket + identitas. Jika sah → konfirmasi naik. Jika curiga → tahan.
+        Tiket tidak ada di manifes kapal ini. Lihat pelabuhan <b>ASAL</b> di atas:<br>
+        • Asal <b>pelabuhan lain</b> → tekan <b>Lanjutan · Naik</b>.<br>
+        • <b>Beli tiket di loket hari ini</b> (asal = pelabuhan ini) → tekan <b>Go-Show</b>.<br>
+        Verifikasi tiket + identitas. Jika mencurigakan → <b>Tahan</b>.
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
@@ -2498,10 +2500,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
              background:#E65100;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
       🎫 Go-Show (beli tiket di loket)
     </button>
-    <button onclick="tutupHasilScan()"
-      style="margin-top:8px;width:100%;padding:8px;border:1px solid var(--gray-300);
-             border-radius:8px;background:#fff;color:var(--gray-500);font-size:11px;cursor:pointer">
-      Lewati tanpa keputusan
+    <button onclick="batalkanScan()"
+      style="margin-top:8px;width:100%;padding:9px;border:1px solid var(--gray-300);
+             border-radius:8px;background:#fff;color:var(--gray-600);font-size:11px;cursor:pointer">
+      ↩️ Batal — salah scan / QR tidak valid
     </button>`;
   }
 
@@ -4167,6 +4169,7 @@ function renderLogFromCache(){
     else if(l.status==='CEK_LANJUTAN') badge='<span class="badge ba">🔎 Cek Lanjutan</span>';
     else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
+    if(l.status==='DIBATALKAN') badge='<span class="badge bgr">↩️ Batal</span>';
     if(l.info && String(l.info).indexOf('GO-SHOW')===0) badge='<span class="badge ba">🎫 Go-Show</span>';
     const pc = `<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
     return `<tr>
@@ -5353,6 +5356,41 @@ function tahanTiket(ticket, name, alasan){
   setTimeout(()=>{ tutupHasilScan(); }, 2000);
 }
 
+// Batal — salah scan / QR tidak valid. TIDAK dihitung naik/lolos/pelanggaran;
+// hanya jejak audit agar setiap kemunculan layar tak-terdaftar tetap terekam (bisa dipertanggungjawabkan).
+function batalkanScan(ticket){
+  ticket = ticket || lastScannedTicket;
+  const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
+  const entry = {
+    time: now, ticket: ticket||'\u2014', name:'\u2014',
+    pos: S.currentPos, status:'DIBATALKAN',
+    info:'Dibatalkan petugas \u00b7 salah scan / QR tidak valid',
+    gender:'', kategori:'',
+    shipType: S.shipType,
+    sesiId: S.currentSesiId || getSesiId(),
+    namaKapal: S.ship.name||'',
+    voyage: S.ship.voyage||'',
+    petugas: S.petugas || '',
+  };
+  S.scanLog.unshift(entry);
+  if(S.scanLog.length>500) S.scanLog.pop();
+  saveState();
+  sbAddLog({...entry, _sesiId: entry.sesiId});
+
+  const box = document.getElementById('result-box');
+  if(box){
+    box.className='result-box';
+    box.innerHTML = `
+      <div class="r-icon">\u21a9\ufe0f</div>
+      <div class="r-status" style="color:var(--gray-600)">DIBATALKAN \u2014 SALAH SCAN</div>
+      <div class="r-name">${ticket||'\u2014'}</div>
+      <div class="r-info">Tercatat sebagai pembatalan \u00b7 Siap scan berikutnya</div>`;
+  }
+  showToast('\u21a9\ufe0f Scan dibatalkan & tercatat (salah scan)','info');
+  renderLog();
+  setTimeout(()=>{ tutupHasilScan(); }, 1200);
+}
+
 function catatPenumpangLanjutan(ticket){
   ticket = ticket || lastScannedTicket;
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
@@ -6443,6 +6481,7 @@ function renderLog(){
     else if(l.status==='CEK_LANJUTAN') badge='<span class="badge ba">🔎 Cek Lanjutan</span>';
     else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
+    if(l.status==='DIBATALKAN') badge='<span class="badge bgr">↩️ Batal</span>';
     if(l.info && String(l.info).indexOf('GO-SHOW')===0) badge='<span class="badge ba">🎫 Go-Show</span>';
     const pc=`<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
     return `<tr>
