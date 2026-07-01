@@ -1850,6 +1850,8 @@ let _scanStarting = false;
 const SCAN_FPS = 6;               // fps kamera (turun dari 10 → hemat baterai & CPU; bisa disetel)
 let _scanBusy = false;            // true saat processTicket sedang jalan
 let _keputusanPending = false;    // true saat layar keputusan F1 menunggu aksi petugas
+let _keputusanTimer = null;       // pengaman: auto-lepas kunci bila keputusan tak kunjung diambil
+let lastScannedName = '';         // nama hasil scan terakhir (untuk tombol keputusan, tanpa injeksi string)
 async function startCameraScan(){
   if(_scanStarting) return;     // cegah double-tap
   _scanStarting = true;
@@ -2125,9 +2127,10 @@ async function processTicket(ticketNo){
 
   // F2: bila tiket tak ada di manifes, cek apakah ia penumpang lanjutan terdaftar
   // (mis. sudah diverifikasi di F1) agar dikenali, bukan langsung "tidak dikenal".
-  let isLanjutanTerdaftar = false;
+  let isLanjutanTerdaftar = false, isGoshowTerdaftar = false;
   if(S.currentPos==='F2' && !pax){
-    isLanjutanTerdaftar = await cekLanjutanTerdaftar(ticketNo, ticketUp);
+    isGoshowTerdaftar = await cekGoshowTerdaftar(ticketNo, ticketUp);
+    if(!isGoshowTerdaftar) isLanjutanTerdaftar = await cekLanjutanTerdaftar(ticketNo, ticketUp);
   }
 
   let status, name, info, gender='', kategori='', tujuan='';
@@ -2171,7 +2174,11 @@ async function processTicket(ticketNo){
     if(S.dupAlerts.length>30) S.dupAlerts.pop();
 
   } else if(S.currentPos==='F2' && !pax){
-    if(isLanjutanTerdaftar){
+    if(isGoshowTerdaftar){
+      // ✅ Go-show yang sudah dikonfirmasi di Filter 1 → langsung NAIK (tanpa keputusan ulang)
+      status='NAIK'; name='Go-Show';
+      info='GO-SHOW · dikenali otomatis dari Filter 1 · naik kapal';
+    } else if(isLanjutanTerdaftar){
       // ✅ Penumpang lanjutan yang sudah ditandai (mis. di F1) → boleh NAIK
       status='NAIK'; name='Penumpang Lanjutan';
       info='Penumpang lanjutan · sudah diverifikasi · Naik ke kapal';
@@ -2239,6 +2246,7 @@ async function processTicket(ticketNo){
   }
 
   lastScannedTicket = ticketNo; // untuk tombol keputusan petugas
+  lastScannedName = name || '';  // dipakai tombol keputusan tanpa menyisipkan string ke onclick
 
   // Status yang BUTUH KEPUTUSAN petugas: jangan catat dulu ke log.
   // Pencatatan terjadi saat petugas menekan tombol keputusan
@@ -2247,6 +2255,10 @@ async function processTicket(ticketNo){
 
   if(butuhKeputusan){
     _keputusanPending = true;   // kunci scanner sampai petugas menekan tombol keputusan
+    clearTimeout(_keputusanTimer);
+    _keputusanTimer = setTimeout(()=>{   // pengaman: jangan sampai scanner beku permanen
+      if(_keputusanPending){ showToast('⏱️ Keputusan dilewati otomatis — siap scan lagi','info'); tutupHasilScan(); }
+    }, 120000);
     showResult(status,name,info,gender,kategori,tujuan,asal,usia);
     return; // tunggu keputusan petugas
   }
@@ -2380,12 +2392,12 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button onclick="izinkanKeluarSementara('${lastScannedTicket}','${(name||'').replace(/'/g,'')}')"
+      <button onclick="izinkanKeluarSementara()"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:var(--amber);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🔄 Izinkan Keluar Sementara
       </button>
-      <button onclick="tahanTiket('${lastScannedTicket}','${(name||'').replace(/'/g,'')}','SUDAH_NAIK')"
+      <button onclick="tahanTiket(null,null,'SUDAH_NAIK')"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🚨 Tahan
@@ -2409,18 +2421,18 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button onclick="catatPenumpangLanjutan('${lastScannedTicket}')"
+      <button onclick="catatPenumpangLanjutan()"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:#6A1B9A;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🔄 Penumpang Lanjutan
       </button>
-      <button onclick="tahanTiket('${lastScannedTicket}','—','TAK_DIKENAL')"
+      <button onclick="tahanTiket(null,'—','TAK_DIKENAL')"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🚨 Tahan
       </button>
     </div>
-    <button onclick="konfirmasiGoShow('${lastScannedTicket}')"
+    <button onclick="konfirmasiGoShow()"
       style="margin-top:8px;width:100%;padding:11px;border:none;border-radius:8px;
              background:#E65100;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
       🎫 Go-Show (beli tiket di loket)
@@ -2442,12 +2454,12 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button onclick="konfirmasiNaikLangsung('${lastScannedTicket}','${(name||'').replace(/'/g,'')}')"
+      <button onclick="konfirmasiNaikLangsung()"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:var(--teal);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         ✅ Konfirmasi Naik
       </button>
-      <button onclick="tahanTiket('${lastScannedTicket}','${(name||'').replace(/'/g,'')}','SKIP_F1')"
+      <button onclick="tahanTiket(null,null,'SKIP_F1')"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🚨 Tahan
@@ -2470,18 +2482,18 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button onclick="konfirmasiLanjutanNaikF2('${lastScannedTicket}')"
+      <button onclick="konfirmasiLanjutanNaikF2()"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:var(--teal);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🔄 Lanjutan · Naik
       </button>
-      <button onclick="tahanTiket('${lastScannedTicket}','—','TAK_DIKENAL')"
+      <button onclick="tahanTiket(null,'—','TAK_DIKENAL')"
         style="flex:1;padding:11px;border:none;border-radius:8px;
                background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">
         🚨 Tahan
       </button>
     </div>
-    <button onclick="konfirmasiGoShow('${lastScannedTicket}')"
+    <button onclick="konfirmasiGoShow()"
       style="margin-top:8px;width:100%;padding:11px;border:none;border-radius:8px;
              background:#E65100;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
       🎫 Go-Show (beli tiket di loket)
@@ -3894,6 +3906,20 @@ async function cekLanjutanTerdaftar(ticket, ticketUp){
   return false;
 }
 
+// Cek apakah tiket sudah dikonfirmasi sebagai go-show (mis. di Filter 1) agar F2 mengenalinya otomatis.
+async function cekGoshowTerdaftar(ticket, ticketUp){
+  ticketUp = ticketUp || String(ticket||'').trim().toUpperCase();
+  if(S.goshowLog && S.goshowLog.some(g=>String(g.ticket).trim().toUpperCase()===ticketUp)) return true;
+  if(sb){
+    try{
+      const { data, error } = await sb.from('scan_log')
+        .select('no_tiket').ilike('info','GO-SHOW%').ilike('no_tiket', ticket).limit(1);
+      if(!error && data && data.length) return true;
+    }catch(e){ /* abaikan */ }
+  }
+  return false;
+}
+
 // ── REAL-TIME SUBSCRIPTION ────────────────────────────────────
 let _sbChannel = null;
 
@@ -3964,6 +3990,16 @@ function updateSbConfigStatus(){
 // ══════════════════════════════════════
 function applyManifesToState({ manifest, tipeKapal, namaKapal }){
   S.manifest  = manifest;
+  // Rekonsiliasi go-show dengan manifes terbaru: tiket go-show yang kini ADA di
+  // manifes baru tak lagi dihitung sebagai go-show, dan paksa sinkron ulang penuh
+  // agar status historis (lolos F1/naik) terterap ke penumpang manifes baru.
+  try{
+    const inManifest = _manifestTicketSet();
+    if(S.goshowLog && S.goshowLog.length){
+      S.goshowLog = S.goshowLog.filter(g=>!inManifest.has(String(g.ticket).trim().toUpperCase()));
+    }
+    _lastSyncTs = null; _lastSyncSesi = null;   // paksa sinkron penuh sekali
+  }catch(e){}
   S.shipType  = tipeKapal;
   if(namaKapal){
     S.ship.name = namaKapal;
@@ -3973,12 +4009,14 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
   setShipType(tipeKapal);
   S.manifestPage = 1;
   updateManifestSummary();
-  setTimeout(()=>{
-    const tbody = document.getElementById('tbody-'+S.shipType);
-    const accT  = document.getElementById('acc-tabel');
+  setTimeout(async ()=>{
     renderManifestTable();
     updateManifesStatusUI();
+    try{ await syncStatusFromSupabase(true); }catch(e){}   // terapkan status historis (termasuk eks go-show) ke manifes baru
+    try{ await refreshGoshowCounts(); }catch(e){}
     updateInfografis();
+    updateManifestSummary();
+    updateDashCounters();
   }, 100);
   // Tampilkan accordion tabel (struktur baru) dan manifest-summary di dalamnya
   const mSummary = document.getElementById('manifest-summary');
@@ -5203,12 +5241,14 @@ function tutupHasilScan(){
   }
   // Lepas kunci keputusan & lanjutkan scanner
   _keputusanPending = false;
+  clearTimeout(_keputusanTimer);
   try{ if(qrScanner) qrScanner.resume(); }catch(e){}
   armIdleTimer();   // aktivitas selesai → reset hitung mundur idle
 }
 
 // Izinkan tiket keluar sementara (transit/ambil barang) — boleh masuk lagi tanpa flag
 function izinkanKeluarSementara(ticket, name){
+  ticket = ticket || lastScannedTicket; name = (name!=null&&name!=="")?name:lastScannedName;
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
   const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
 
@@ -5260,6 +5300,7 @@ function izinkanKeluarSementara(ticket, name){
 
 // Tahan tiket yang mencurigakan — catat sebagai pelanggaran
 function tahanTiket(ticket, name, alasan){
+  ticket = ticket || lastScannedTicket; name = (name!=null&&name!=="")?name:lastScannedName;
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
   const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
 
@@ -5313,6 +5354,7 @@ function tahanTiket(ticket, name, alasan){
 }
 
 function catatPenumpangLanjutan(ticket){
+  ticket = ticket || lastScannedTicket;
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
   const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
   const tanggal = new Date().toLocaleDateString('id-ID');
@@ -5355,6 +5397,7 @@ function catatPenumpangLanjutan(ticket){
 // Konfirmasi naik untuk penumpang yang ADA di manifes tapi belum lewat Filter 1.
 // Dipakai pada keputusan F2 (CEK_NAIK_LANGSUNG).
 function konfirmasiNaikLangsung(ticket, name){
+  ticket = ticket || lastScannedTicket; name = (name!=null&&name!=="")?name:lastScannedName;
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
   const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
 
@@ -5399,6 +5442,7 @@ function konfirmasiNaikLangsung(ticket, name){
 // Konfirmasi penumpang lanjutan naik di F2 (tiket tak ada di manifes).
 // Mencatat ke daftar lanjutan (arsip & pengenalan berikutnya) sekaligus mencatat NAIK.
 function konfirmasiLanjutanNaikF2(ticket){
+  ticket = ticket || lastScannedTicket;
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
   const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
   const tanggal = new Date().toLocaleDateString('id-ID');
@@ -5442,27 +5486,46 @@ function konfirmasiLanjutanNaikF2(ticket){
 // ══════════════════════════════════════════
 // GO-SHOW (penumpang beli tiket di loket setelah manifes di-upload)
 // ══════════════════════════════════════════
-let _goshowCount = 0;  // jumlah penumpang go-show (distinct) untuk rekonsiliasi total
+let _goshowCount = 0, _goshowNaik = 0;  // go-show (distinct, di luar manifes terbaru) untuk rekonsiliasi
 
+function _manifestTicketSet(){
+  return new Set(S.manifest.map(p=>String(p['No Tiket']||p.NO_TIKET||'').trim().toUpperCase()).filter(Boolean));
+}
 async function refreshGoshowCounts(){
   try{
+    const inManifest = _manifestTicketSet();
     if(sb){
       const sesiIds = (S.kapalAktif && S.kapalAktif.length)
         ? S.kapalAktif.map(k=>k.sesi_id)
         : [getSesiId()].filter(Boolean);
-      if(!sesiIds.length){ _goshowCount = (S.goshowLog?S.goshowLog.length:0); return; }
+      if(!sesiIds.length){
+        const gl=(S.goshowLog||[]).filter(g=>!inManifest.has(String(g.ticket).trim().toUpperCase()));
+        _goshowCount=gl.length; _goshowNaik=gl.filter(g=>g.naik).length; return;
+      }
       const { data } = await sb.from('scan_log')
-        .select('no_tiket').ilike('info','GO-SHOW%').in('sesi_id', sesiIds);
-      const set = new Set((data||[]).map(r=>String(r.no_tiket||'').trim().toUpperCase()));
-      _goshowCount = set.size;
+        .select('no_tiket,status').ilike('info','GO-SHOW%').in('sesi_id', sesiIds);
+      const tickets=new Set(), naik=new Set();
+      (data||[]).forEach(r=>{
+        const t=String(r.no_tiket||'').trim().toUpperCase();
+        if(!t || inManifest.has(t)) return;   // sudah masuk manifes terbaru → bukan lagi go-show (cegah dobel hitung)
+        tickets.add(t);
+        if(r.status==='NAIK') naik.add(t);
+      });
+      _goshowCount=tickets.size; _goshowNaik=naik.size;
     } else {
-      _goshowCount = (S.goshowLog?S.goshowLog.length:0);
+      const gl=(S.goshowLog||[]).filter(g=>!inManifest.has(String(g.ticket).trim().toUpperCase()));
+      _goshowCount=gl.length; _goshowNaik=gl.filter(g=>g.naik).length;
     }
-  }catch(e){ _goshowCount = (S.goshowLog?S.goshowLog.length:0); }
+  }catch(e){
+    const inManifest=_manifestTicketSet();
+    const gl=(S.goshowLog||[]).filter(g=>!inManifest.has(String(g.ticket).trim().toUpperCase()));
+    _goshowCount=gl.length; _goshowNaik=gl.filter(g=>g.naik).length;
+  }
 }
 
 // F1 → lolos (OK); F2 → naik (NAIK). Ditandai 'GO-SHOW' di info untuk rekonsiliasi.
 function konfirmasiGoShow(ticket){
+  ticket = ticket || lastScannedTicket;
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
   const now = new Date().toLocaleTimeString('id-ID',{hour12:false});
   const tanggal = new Date().toLocaleDateString('id-ID');
@@ -5843,7 +5906,7 @@ function parseCSV(text){
 
 function updateManifestSummary(){
   const goshow = _goshowCount || 0;
-  const goshowNaik = S.goshowLog ? S.goshowLog.filter(g=>g.naik).length : 0;
+  const goshowNaik = _goshowNaik || 0;
   const total=S.manifest.length + goshow;
   const boarded=S.manifest.filter(p=>p._status==='naik').length + goshowNaik;
   const dermaga=S.manifest.filter(p=>p._status==='dermaga').length;
@@ -6014,7 +6077,7 @@ function updateDashCounters(){
   if(petEl) petEl.style.display = 'block';
 
   const goshow = _goshowCount || 0;
-  const goshowNaik = S.goshowLog ? S.goshowLog.filter(g=>g.naik).length : 0;
+  const goshowNaik = _goshowNaik || 0;
   const total = S.manifest.length + goshow;
   const naik  = S.manifest.filter(p=>p._status==='naik').length + goshowNaik;
   const f1    = S.scanLog.filter(l=>l.pos==='F1'&&l.status==='OK').length;
