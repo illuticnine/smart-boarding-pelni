@@ -1596,7 +1596,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 const SUPABASE_URL  = 'https://knmkbqjpcjuhozljdmka.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubWticWpwY2p1aG96bGpkbWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MjU0NDYsImV4cCI6MjA5NzAwMTQ0Nn0.QJ4Ku7iVPCKuaLzPCLqtznwbRxD6bX8PuCG7sSBmQCo';
-const APP_VERSION = 'v2.1';
+const APP_VERSION = 'v2.2';
 
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
@@ -4720,24 +4720,41 @@ async function _renderDashboardMultiKapalInner(container){
 
   // Ambil stats semua kapal dari Supabase sekaligus
   const cards = await Promise.all(S.kapalAktif.map(async kapal => {
-    const { data: scanData } = await sb.from('scan_log')
-      .select('status,pos')
-      .eq('sesi_id', kapal.sesi_id);
+    // Ambil scan (dengan no_tiket) + daftar tiket manifes kapal ini,
+    // agar hitungan PER-PENUMPANG UNIK dan konsisten dgn tampilan F1/F2/Manifes.
+    const [{ data: scanData }, { data: manData }] = await Promise.all([
+      sb.from('scan_log').select('status,pos,no_tiket').eq('sesi_id', kapal.sesi_id).range(0,4999),
+      sb.from('manifes').select('no_tiket').eq('sesi_id', kapal.sesi_id).range(0,4999),
+    ]);
     const scans = scanData || [];
-    const f1    = scans.filter(r=>r.pos==='F1'&&r.status==='OK').length;
-    const naik  = scans.filter(r=>r.status==='NAIK').length;
-    const dup   = scans.filter(r=>r.status==='DUPLIKAT').length;
-    const bermasalah = scans.filter(r=>isProblemStatus(r.status)).length;
+    const norm  = t => String(t||'').trim().toUpperCase();
+    const mset  = new Set((manData||[]).map(r=>norm(r.no_tiket)).filter(Boolean));
+    const naikSet = new Set(), f1Set = new Set();
+    let dup=0, bermasalah=0;
+    scans.forEach(r=>{
+      const t = norm(r.no_tiket);
+      if(r.status==='NAIK' && t) naikSet.add(t);
+      if(r.pos==='F1' && r.status==='OK' && t) f1Set.add(t);
+      if(r.status==='DUPLIKAT') dup++;
+      if(isProblemStatus(r.status)) bermasalah++;
+    });
+    let naik=0, naikTambahan=0;
+    if(mset.size>0){
+      naikSet.forEach(t=>{ if(mset.has(t)) naik++; else naikTambahan++; });
+    } else {
+      naik = naikSet.size;   // fallback bila tabel manifes kosong utk sesi ini
+    }
+    const f1    = f1Set.size;
     const total = kapal.total_manifes || 0;
-    const sisa  = Math.max(0, total - naik);
+    const sisa  = Math.max(0, total - naik);   // sisa penumpang MANIFES
     const pct   = total > 0 ? Math.round(naik/total*100) : 0;
     // Warna progress berdasarkan persentase
     const pctColor = pct >= 90 ? '#69F0AE' : pct >= 60 ? '#FFD740' : '#FF7043';
-    return { kapal, f1, naik, sisa, total, pct, dup, bermasalah, pctColor };
+    return { kapal, f1, naik, naikTambahan, sisa, total, pct, dup, bermasalah, pctColor };
   }));
 
   // ── Render card per kapal ──────────────────────────────────
-  container.innerHTML = cards.map(({kapal, f1, naik, sisa, total, pct, dup, bermasalah, pctColor}) => `
+  container.innerHTML = cards.map(({kapal, f1, naik, naikTambahan, sisa, total, pct, dup, bermasalah, pctColor}) => `
     <div style="border-radius:16px;margin-bottom:12px;overflow:hidden;
                 box-shadow:0 4px 20px rgba(0,0,0,.12)">
 
@@ -4782,6 +4799,7 @@ async function _renderDashboardMultiKapalInner(container){
           <div style="text-align:center;padding:10px 6px;background:#F8F9FA;border-radius:10px">
             <div style="font-size:20px;font-weight:800;color:#E65100">${naik}</div>
             <div style="font-size:10px;color:#666;margin-top:2px;font-weight:600">Naik Kapal</div>
+            ${naikTambahan>0?`<div style="font-size:9px;color:#E65100;font-weight:700">+${naikTambahan} lanjutan/go-show</div>`:''}
           </div>
           <div style="text-align:center;padding:10px 6px;
                       background:${dup>0?'#FFF3E0':'#F8F9FA'};border-radius:10px">
@@ -4800,7 +4818,7 @@ async function _renderDashboardMultiKapalInner(container){
         <!-- Progress bar -->
         <div style="display:flex;justify-content:space-between;
                     font-size:11px;color:#666;margin-bottom:5px">
-          <span>${naik} dari ${total} penumpang naik</span>
+          <span>${naik} dari ${total} manifes naik${naikTambahan>0?` · +${naikTambahan} lanjutan/go-show`:''}</span>
           <span style="font-weight:800;color:${pctColor}">${pct}%</span>
         </div>
         <div style="background:#F0F0F0;border-radius:6px;height:8px;overflow:hidden">
