@@ -1596,7 +1596,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 const SUPABASE_URL  = 'https://knmkbqjpcjuhozljdmka.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubWticWpwY2p1aG96bGpkbWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MjU0NDYsImV4cCI6MjA5NzAwMTQ0Nn0.QJ4Ku7iVPCKuaLzPCLqtznwbRxD6bX8PuCG7sSBmQCo';
-const APP_VERSION   = 'v2.0';
+const APP_VERSION = 'v2.1';
 
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
@@ -3394,14 +3394,26 @@ async function updateInfografisF1(){
     const { count } = await q;
     return count || 0;
   };
-  const [lewatF1, dup, bermasalah] = await Promise.all([
-    cntF1(q=>q.eq('pos','F1').in('status',['OK','NAIK'])),
+  const fetchTixF1 = async ()=>{
+    const { data, error } = await sb.from('scan_log').select('no_tiket')
+      .in('sesi_id', sesiIds).eq('pos','F1').in('status',['OK','NAIK']).range(0,4999);
+    if(error) throw error;
+    return (data||[]).map(r=>String(r.no_tiket||'').trim().toUpperCase()).filter(Boolean);
+  };
+  const [lewatTix, dup, bermasalah] = await Promise.all([
+    fetchTixF1(),
     cntF1(q=>q.eq('status','DUPLIKAT')),
     cntF1(q=>q.in('status', PROBLEM_STATUSES)),
   ]);
-  const totalEff = totalGab + _goshowCount;   // total termasuk penumpang go-show
-  const belum   = Math.max(0, totalEff - lewatF1);
-  const pct     = totalEff > 0 ? Math.round(lewatF1/totalEff*100) : 0;
+  const lset = new Set(lewatTix);      // per-tiket unik (scan ulang tidak dihitung dobel)
+  let lewatF1 = lset.size, lewatTambahan = 0;
+  if(sesiIds.length===1){              // 1 kapal aktif: pisahkan manifes vs lanjutan/go-show
+    const mset=_manifestTicketSet(); let lM=0,lX=0;
+    lset.forEach(t=>{ if(mset.has(t)) lM++; else lX++; });
+    lewatF1=lM; lewatTambahan=lX;
+  }
+  const belum   = Math.max(0, totalGab - lewatF1);
+  const pct     = totalGab > 0 ? Math.round(lewatF1/totalGab*100) : 0;
 
   se('infog-f1-lewat', lewatF1);
   se('infog-f1-sisa',  belum);
@@ -3411,19 +3423,21 @@ async function updateInfografisF1(){
 
   const bar = document.getElementById('infog-prog-bar');
   if(bar) bar.style.width = pct+'%';
-  se('infog-prog-label', lewatF1+' dari '+totalEff+' penumpang lewat F1'+(_goshowCount>0?' · +'+_goshowCount+' go-show':''));
+  se('infog-prog-label', lewatF1+' dari '+totalGab+' manifes lewat F1'+(lewatTambahan>0?' · +'+lewatTambahan+' lanjutan/go-show':''));
   se('infog-prog-pct',   pct+'%');
 
   // ── Banner aksi F1 ──
   const menit  = etdMenitTerdekat(S.kapalAktif);
   const etdTxt = menit!=null ? ` · ETD ${fmtETD(menit)}` : '';
   let level, msg;
-  if(totalEff<=0){ level='warn'; msg='Menunggu data manifes kapal aktif…'; }
+  if(totalGab<=0){ level='warn'; msg='Menunggu data manifes kapal aktif…'; }
   else if(belum<=0){ level='ok'; msg='✅ Semua penumpang sudah lewat Trestle — fokus pantau tiket bermasalah & arus balik.'; }
   else if(menit!=null && menit<=20){ level='urgent'; msg=`🔴 ${belum} penumpang belum lewat Trestle${etdTxt} — percepat pemeriksaan & umumkan boarding.`; }
   else if(pct>=80){ level='ok'; msg=`🟢 Hampir tuntas — tinggal ${belum} penumpang menuju Trestle${etdTxt}.`; }
   else { level='warn'; msg=`🟠 ${belum} penumpang belum lewat Trestle${etdTxt} — pantau & jaga laju antrean.`; }
   const extra=[];
+  if(lewatTambahan>0) extra.push(`➕ ${lewatTambahan} lanjutan/go-show lewat F1`);
+  { const _ob1 = outboxCount(); if(_ob1>0) extra.push(`📤 ${_ob1} scan belum terkirim — otomatis dikirim saat online`); }
   if(dup>0) extra.push(`🚨 ${dup} alert duplikat`);
   if(bermasalah>0) extra.push(`🚫 ${bermasalah} tiket bermasalah — tinjau di Log`);
   setActionBanner(
@@ -3444,27 +3458,44 @@ async function updateInfografisF2(){
   document.getElementById('infog-title').textContent='⛵ FILTER 2 — PASTIKAN SEMUA NAIK';
 
   const total = S.manifest.length;
-  let naik=0, dermaga=0, dup=0, bermasalah=0, fromSupabase=false;
+  let naik=0, dermaga=0, dup=0, bermasalah=0, naikTambahan=0, fromSupabase=false;
 
   const sesiId = S.currentSesiId;
   if(sb && sesiId){
     try{
+      // Ambil DAFTAR TIKET (bukan jumlah baris) agar per-penumpang unik,
+      // lalu pisahkan penumpang manifes vs tambahan (lanjutan/go-show).
+      const fetchTix = async (apply)=>{
+        let q = sb.from('scan_log').select('no_tiket').eq('sesi_id', sesiId).range(0,4999);
+        q = apply(q);
+        const { data, error } = await q;
+        if(error) throw error;
+        return (data||[]).map(r=>String(r.no_tiket||'').trim().toUpperCase()).filter(Boolean);
+      };
       const cntS = async (apply)=>{
         let q = sb.from('scan_log').select('*', { count:'exact', head:true }).eq('sesi_id', sesiId);
         q = apply(q);
         const { count } = await q;
         return count || 0;
       };
-      const [naikC, okC, dupC, bermasalahC] = await Promise.all([
-        cntS(q=>q.eq('status','NAIK')),
-        cntS(q=>q.eq('status','OK')),
+      const [naikTix, okTix, dupC, bermasalahC] = await Promise.all([
+        fetchTix(q=>q.eq('status','NAIK')),
+        fetchTix(q=>q.eq('status','OK')),
         cntS(q=>q.eq('status','DUPLIKAT')),
         cntS(q=>q.in('status', PROBLEM_STATUSES)),
       ]);
-      naik       = naikC;
-      dermaga    = Math.max(0, okC - naikC); // sudah lewat F1 (OK) namun belum NAIK
-      dup        = dupC;
-      bermasalah = bermasalahC;
+      const mset    = _manifestTicketSet();
+      const naikSet = new Set(naikTix);
+      const okSet   = new Set(okTix);
+      let nM=0, nX=0;
+      naikSet.forEach(t=>{ if(mset.has(t)) nM++; else nX++; });
+      let dM=0;
+      okSet.forEach(t=>{ if(mset.has(t) && !naikSet.has(t)) dM++; });
+      naik         = nM;   // penumpang MANIFES yang naik — konsisten dengan tab Manifes
+      naikTambahan = nX;   // lanjutan & go-show yang naik (di luar manifes)
+      dermaga      = dM;   // penumpang manifes di dermaga (OK, belum NAIK)
+      dup          = dupC;
+      bermasalah   = bermasalahC;
       fromSupabase = true;
     }catch(e){ /* jatuh ke fallback lokal di bawah */ }
   }
@@ -3475,11 +3506,13 @@ async function updateInfografisF2(){
     dermaga = S.manifest.filter(p=>p._status==='dermaga').length;
     dup     = S.dupAlerts.length;
     bermasalah = S.scanLog.filter(l=>isProblemStatus(l.status)).length;
+    const msetL=_manifestTicketSet(), extraSet=new Set();
+    S.scanLog.forEach(l=>{ if(l.status==='NAIK'){ const t=String(l.ticket||'').trim().toUpperCase(); if(t && !msetL.has(t)) extraSet.add(t); } });
+    naikTambahan = extraSet.size;
   }
 
-  const totalEff = total + _goshowCount;   // total termasuk penumpang go-show
-  const belum = Math.max(0, totalEff - naik - dermaga);
-  const pct   = totalEff>0 ? Math.round(naik/totalEff*100) : 0;
+  const belum = Math.max(0, total - naik - dermaga);   // sisa penumpang MANIFES
+  const pct   = total>0 ? Math.round(naik/total*100) : 0;
 
   se('infog-f2-belum',   belum);
   se('infog-f2-dermaga', dermaga);
@@ -3492,7 +3525,7 @@ async function updateInfografisF2(){
 
   const bar = document.getElementById('infog-prog-bar');
   if(bar) bar.style.width = pct+'%';
-  se('infog-prog-label', naik+' dari '+totalEff+' penumpang naik'+(_goshowCount>0?' · +'+_goshowCount+' go-show':''));
+  se('infog-prog-label', naik+' dari '+total+' manifes naik'+(naikTambahan>0?' · +'+naikTambahan+' lanjutan/go-show':''));
   se('infog-prog-pct',   pct+'%');
 
   // ── Banner aksi F2 ──
@@ -3510,6 +3543,8 @@ async function updateInfografisF2(){
   if(dermaga>0 && !(menit!=null && menit<=20)) extra.push(`🚶 ${dermaga} menunggu di dermaga`);
   if(dup>0) extra.push(`🚨 ${dup} alert duplikat`);
   if(bermasalah>0) extra.push(`🚫 ${bermasalah} tiket bermasalah — tinjau di Log`);
+  if(naikTambahan>0) extra.push(`➕ ${naikTambahan} lanjutan/go-show naik (di luar manifes)`);
+  const _ob2 = outboxCount(); if(_ob2>0) extra.push(`📤 ${_ob2} scan belum terkirim — otomatis dikirim saat online`);
   setActionBanner(
     msg + (extra.length?`<div style="margin-top:5px;font-weight:700">${extra.join(' &nbsp;·&nbsp; ')}</div>`:''),
     (bermasalah>0 && level==='ok') ? 'warn' : level
@@ -3522,25 +3557,85 @@ async function updateInfografisF2(){
 // ══════════════════════════════════════════════════════════════
 
 // ── SCAN LOG ──────────────────────────────────────────────────
-async function sbAddLog(entry){
-  if(!sb) return;
+// ── OUTBOX OFFLINE ────────────────────────────────────────────
+// Scan yang gagal terkirim (sinyal putus / error) diantrekan di
+// localStorage lalu dikirim ulang OTOMATIS saat koneksi kembali.
+// Tanpa ini, scan offline hanya tersimpan di HP petugas dan tidak
+// pernah sampai ke cloud → penumpang tampak "tersangkut di dermaga".
+const OUTBOX_KEY = 'sb_outbox_v1';
+function getOutbox(){ try{ return JSON.parse(localStorage.getItem(OUTBOX_KEY)) || []; }catch(e){ return []; } }
+function setOutbox(a){ try{ localStorage.setItem(OUTBOX_KEY, JSON.stringify(a||[])); }catch(e){} }
+function outboxCount(){ return getOutbox().length; }
+function queueLog(row){
+  const a = getOutbox();
+  const dupe = a.some(r=>r.no_tiket===row.no_tiket && r.status===row.status && r.waktu===row.waktu && r.sesi_id===row.sesi_id);
+  if(!dupe){ a.push(row); setOutbox(a); }
+  updateOutboxBadge();
+}
+let _obFlushing = false;
+async function flushOutbox(){
+  if(_obFlushing || !sb) return;
+  if(typeof navigator!=='undefined' && navigator.onLine===false) return;
+  const a = getOutbox();
+  if(!a.length) return;
+  _obFlushing = true;
   try{
-    const sesiId = entry._sesiId || entry.sesiId || getSesiId();
-    const { error } = await sb.from('scan_log').insert({
-      sesi_id    : sesiId,
-      waktu      : entry.time,
-      no_tiket   : entry.ticket,
-      nama       : entry.name,
-      pos        : entry.pos,
-      status     : entry.status,
-      info       : entry.info || '',
-      tipe_kapal : entry.shipType || S.shipType,
-      nama_kapal : entry.namaKapal || S.ship.name || '',
-      voyage     : entry.voyage || S.ship.voyage || '',
-      petugas    : entry.petugas || S.petugas || '',
-    });
-    if(error) console.warn('[SB] addLog insert error:', error.message);
-  }catch(e){ console.warn('[SB] addLog error:', e.message); }
+    let sent = 0;
+    for(let i=0; i<a.length; i+=50){
+      const chunk = a.slice(i, i+50);
+      const { error } = await sb.from('scan_log').insert(chunk);
+      if(error){ break; }          // koneksi masih bermasalah — sisanya coba lagi nanti
+      sent += chunk.length;
+    }
+    if(sent > 0){
+      setOutbox(a.slice(sent));
+      try{ if(typeof syncStatusFromSupabase==='function') syncStatusFromSupabase(); }catch(e){}
+      try{ if(typeof updateInfografis==='function') updateInfografis(); }catch(e){}
+    }
+  }catch(e){ /* coba lagi pada siklus berikutnya */ }
+  finally{ _obFlushing = false; updateOutboxBadge(); }
+}
+function updateOutboxBadge(){
+  let el = document.getElementById('outbox-pill');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'outbox-pill';
+    el.style.cssText = 'display:none;position:fixed;bottom:14px;left:14px;z-index:9998;'
+      + 'background:#B45309;color:#fff;font-size:12px;font-weight:700;padding:8px 12px;'
+      + 'border-radius:20px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;max-width:80vw';
+    el.title = 'Ketuk untuk coba kirim sekarang';
+    el.onclick = ()=>flushOutbox();
+    document.body.appendChild(el);
+  }
+  const n = outboxCount();
+  if(n>0){ el.style.display='block'; el.textContent = '📤 '+n+' scan belum terkirim — otomatis dikirim saat online (ketuk utk kirim)'; }
+  else { el.style.display='none'; }
+}
+window.addEventListener('online', ()=>{ setTimeout(flushOutbox, 800); });
+setInterval(()=>{ if(outboxCount()>0) flushOutbox(); }, 20000);
+setTimeout(updateOutboxBadge, 1500);
+
+async function sbAddLog(entry){
+  const sesiId = entry._sesiId || entry.sesiId || getSesiId();
+  const row = {
+    sesi_id    : sesiId,
+    waktu      : entry.time,
+    no_tiket   : entry.ticket,
+    nama       : entry.name,
+    pos        : entry.pos,
+    status     : entry.status,
+    info       : entry.info || '',
+    tipe_kapal : entry.shipType || S.shipType,
+    nama_kapal : entry.namaKapal || S.ship.name || '',
+    voyage     : entry.voyage || S.ship.voyage || '',
+    petugas    : entry.petugas || S.petugas || '',
+  };
+  if(!sb){ queueLog(row); return; }
+  if(typeof navigator!=='undefined' && navigator.onLine===false){ queueLog(row); return; }
+  try{
+    const { error } = await sb.from('scan_log').insert(row);
+    if(error){ console.warn('[SB] addLog insert error:', error.message); queueLog(row); }
+  }catch(e){ console.warn('[SB] addLog error:', e.message); queueLog(row); }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4046,6 +4141,7 @@ function applyManifesToState({ manifest, tipeKapal, namaKapal }){
 // ══════════════════════════════════════
 let _lastSyncTs = null, _lastSyncSesi = null;  // untuk sinkronisasi inkremental
 async function syncStatusFromSupabase(silent = true){
+  try{ if(outboxCount()>0) flushOutbox(); }catch(e){}
   if(!sb || !S.manifest.length) return false;
   try{
     const sesiId = getSesiId();
