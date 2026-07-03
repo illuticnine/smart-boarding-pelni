@@ -1596,7 +1596,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 const SUPABASE_URL  = 'https://knmkbqjpcjuhozljdmka.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubWticWpwY2p1aG96bGpkbWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MjU0NDYsImV4cCI6MjA5NzAwMTQ0Nn0.QJ4Ku7iVPCKuaLzPCLqtznwbRxD6bX8PuCG7sSBmQCo';
-const APP_VERSION = 'v2.2';
+const APP_VERSION = 'v2.3';
 
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
@@ -3395,10 +3395,9 @@ async function updateInfografisF1(){
     return count || 0;
   };
   const fetchTixF1 = async ()=>{
-    const { data, error } = await sb.from('scan_log').select('no_tiket')
-      .in('sesi_id', sesiIds).eq('pos','F1').in('status',['OK','NAIK']).range(0,4999);
-    if(error) throw error;
-    return (data||[]).map(r=>String(r.no_tiket||'').trim().toUpperCase()).filter(Boolean);
+    const rows = await sbFetchColPaged(()=>sb.from('scan_log').select('no_tiket')
+      .in('sesi_id', sesiIds).eq('pos','F1').in('status',['OK','NAIK']));
+    return rows.map(r=>String(r.no_tiket||'').trim().toUpperCase()).filter(Boolean);
   };
   const [lewatTix, dup, bermasalah] = await Promise.all([
     fetchTixF1(),
@@ -3466,11 +3465,11 @@ async function updateInfografisF2(){
       // Ambil DAFTAR TIKET (bukan jumlah baris) agar per-penumpang unik,
       // lalu pisahkan penumpang manifes vs tambahan (lanjutan/go-show).
       const fetchTix = async (apply)=>{
-        let q = sb.from('scan_log').select('no_tiket').eq('sesi_id', sesiId).range(0,4999);
-        q = apply(q);
-        const { data, error } = await q;
-        if(error) throw error;
-        return (data||[]).map(r=>String(r.no_tiket||'').trim().toUpperCase()).filter(Boolean);
+        const rows = await sbFetchColPaged(()=>{
+          let q = sb.from('scan_log').select('no_tiket').eq('sesi_id', sesiId);
+          return apply(q);
+        });
+        return rows.map(r=>String(r.no_tiket||'').trim().toUpperCase()).filter(Boolean);
       };
       const cntS = async (apply)=>{
         let q = sb.from('scan_log').select('*', { count:'exact', head:true }).eq('sesi_id', sesiId);
@@ -3557,6 +3556,23 @@ async function updateInfografisF2(){
 // ══════════════════════════════════════════════════════════════
 
 // ── SCAN LOG ──────────────────────────────────────────────────
+// ── FETCH BERHALAMAN (paging) ─────────────────────────────────
+// Supabase membatasi maks 1.000 baris per permintaan. Untuk sesi ramai
+// (mis. 567 penumpang → 1.100+ baris log), pengambilan satu-tembakan
+// akan TERPOTONG dan membuat hitungan meleset. Helper ini menarik
+// kolom yang diminta per 1.000 baris hingga tuntas.
+async function sbFetchColPaged(makeQuery){
+  const out=[]; const CH=1000;
+  for(let from=0; from<=20000; from+=CH){
+    const { data, error } = await makeQuery().range(from, from+CH-1);
+    if(error) throw error;
+    const rows = data || [];
+    for(const r of rows) out.push(r);
+    if(rows.length < CH) break;
+  }
+  return out;
+}
+
 // ── OUTBOX OFFLINE ────────────────────────────────────────────
 // Scan yang gagal terkirim (sinyal putus / error) diantrekan di
 // localStorage lalu dikirim ulang OTOMATIS saat koneksi kembali.
@@ -4720,24 +4736,25 @@ async function _renderDashboardMultiKapalInner(container){
 
   // Ambil stats semua kapal dari Supabase sekaligus
   const cards = await Promise.all(S.kapalAktif.map(async kapal => {
-    // Ambil scan (dengan no_tiket) + daftar tiket manifes kapal ini,
-    // agar hitungan PER-PENUMPANG UNIK dan konsisten dgn tampilan F1/F2/Manifes.
-    const [{ data: scanData }, { data: manData }] = await Promise.all([
-      sb.from('scan_log').select('status,pos,no_tiket').eq('sesi_id', kapal.sesi_id).range(0,4999),
-      sb.from('manifes').select('no_tiket').eq('sesi_id', kapal.sesi_id).range(0,4999),
+    // Hitungan PER-PENUMPANG UNIK, konsisten dgn F1/F2/Manifes.
+    // Query dipecah per-status + berhalaman (sbFetchColPaged) agar tidak
+    // terpotong pagu 1.000 baris Supabase pada sesi ramai.
+    const cnt = async (apply)=>{
+      let q = sb.from('scan_log').select('*',{count:'exact',head:true}).eq('sesi_id', kapal.sesi_id);
+      q = apply(q);
+      const { count } = await q; return count || 0;
+    };
+    const [naikRows, f1Rows, manRows, dup, bermasalah] = await Promise.all([
+      sbFetchColPaged(()=>sb.from('scan_log').select('no_tiket').eq('sesi_id', kapal.sesi_id).eq('status','NAIK')),
+      sbFetchColPaged(()=>sb.from('scan_log').select('no_tiket').eq('sesi_id', kapal.sesi_id).eq('pos','F1').eq('status','OK')),
+      sbFetchColPaged(()=>sb.from('manifes').select('no_tiket').eq('sesi_id', kapal.sesi_id)),
+      cnt(q=>q.eq('status','DUPLIKAT')),
+      cnt(q=>q.in('status', PROBLEM_STATUSES)),
     ]);
-    const scans = scanData || [];
     const norm  = t => String(t||'').trim().toUpperCase();
-    const mset  = new Set((manData||[]).map(r=>norm(r.no_tiket)).filter(Boolean));
-    const naikSet = new Set(), f1Set = new Set();
-    let dup=0, bermasalah=0;
-    scans.forEach(r=>{
-      const t = norm(r.no_tiket);
-      if(r.status==='NAIK' && t) naikSet.add(t);
-      if(r.pos==='F1' && r.status==='OK' && t) f1Set.add(t);
-      if(r.status==='DUPLIKAT') dup++;
-      if(isProblemStatus(r.status)) bermasalah++;
-    });
+    const mset  = new Set(manRows.map(r=>norm(r.no_tiket)).filter(Boolean));
+    const naikSet = new Set(naikRows.map(r=>norm(r.no_tiket)).filter(Boolean));
+    const f1Set   = new Set(f1Rows.map(r=>norm(r.no_tiket)).filter(Boolean));
     let naik=0, naikTambahan=0;
     if(mset.size>0){
       naikSet.forEach(t=>{ if(mset.has(t)) naik++; else naikTambahan++; });
