@@ -1615,7 +1615,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 const SUPABASE_URL  = 'https://knmkbqjpcjuhozljdmka.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubWticWpwY2p1aG96bGpkbWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MjU0NDYsImV4cCI6MjA5NzAwMTQ0Nn0.QJ4Ku7iVPCKuaLzPCLqtznwbRxD6bX8PuCG7sSBmQCo';
-const APP_VERSION = 'v2.4';
+const APP_VERSION = 'v2.5';
 
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
@@ -3614,8 +3614,25 @@ function _stDate(str){
   if(!isNaN(d.getTime())) return {y:d.getFullYear(), mo:d.getMonth()+1};
   return null;
 }
+async function _statNaikSetSesi(sesiId){
+  const rows=await sbFetchColPaged(()=>sb.from('scan_log').select('no_tiket').eq('sesi_id',sesiId).eq('status','NAIK'));
+  const set=new Set();
+  rows.forEach(function(r){const t=String(r.no_tiket||'').trim().toUpperCase(); if(t)set.add(t);});
+  return set;
+}
+async function _statBackfillNaik(sesiId,tickets){
+  // Tulis-balik status 'naik' ke tabel manifes agar riwayat statistik
+  // (Bulan/Tahun/Semua) ikut akurat. Fire-and-forget, senyap bila gagal.
+  try{
+    for(let i=0;i<tickets.length;i+=50){
+      const { error } = await sb.from('manifes').update({status:'naik'})
+        .eq('sesi_id',sesiId).in('no_tiket',tickets.slice(i,i+50));
+      if(error) break;
+    }
+  }catch(e){}
+}
 async function _statFetchRows(force){
-  const SEL='tujuan,jen_kelamin,usia,usia_bulan,tgl_etd,nama_kapal,status';
+  const SEL='no_tiket,tujuan,jen_kelamin,usia,usia_bulan,tgl_etd,nama_kapal,status';
   if(_statScope==='sesi'){
     if(sb && S.currentSesiId){
       try{
@@ -3623,6 +3640,7 @@ async function _statFetchRows(force){
       }catch(e){ /* fallback lokal */ }
     }
     return S.manifest.map(p=>({
+      no_tiket:(p['No Tiket']||p.NO_TIKET||''),
       tujuan:p.TUJUAN||p['Pel. Tujuan']||'', jen_kelamin:p.JEN_KELAMIN||p['Jen. Kelamin']||'',
       usia:String(p.UMUR_TAHUN||p.USIA||''), usia_bulan:String(p.UMUR_BULAN||p.USIA_BULAN||''),
       tgl_etd:p['Tgl Etd']||'', nama_kapal:p['Nama Kapal']||'', status:p._status||'',
@@ -3680,7 +3698,27 @@ async function renderStatistik(force){
   if(perLabel) perLabel.textContent=plabel;
   const total=filt.length;
   if(total===0){ body.innerHTML='<div style="text-align:center;color:#999;padding:30px 0">Belum ada data untuk cakupan ini.</div>'; return; }
-  const naik=filt.filter(function(r){return String(r.status||'')==='naik';}).length;
+  let naik;
+  if(_statScope==='sesi' && sb && S.currentSesiId){
+    // Sumber kebenaran sesi berjalan = scan_log (kolom status manifes bisa tertinggal)
+    let naikSet=null;
+    try{ naikSet=await _statNaikSetSesi(S.currentSesiId); }catch(e){ naikSet=null; }
+    if(naikSet){
+      const perluBackfill=[];
+      naik=0;
+      filt.forEach(function(r){
+        const t=String(r.no_tiket||'').trim().toUpperCase();
+        const isNaik=(String(r.status||'')==='naik')||(t&&naikSet.has(t));
+        if(isNaik) naik++;
+        if(t&&naikSet.has(t)&&String(r.status||'')!=='naik') perluBackfill.push(t);
+      });
+      if(perluBackfill.length) _statBackfillNaik(S.currentSesiId, perluBackfill); // tanpa await
+    } else {
+      naik=filt.filter(function(r){return String(r.status||'')==='naik';}).length;
+    }
+  } else {
+    naik=filt.filter(function(r){return String(r.status||'')==='naik';}).length;
+  }
   const kapalSet=new Set(); filt.forEach(function(r){const k=_stS(r.nama_kapal);if(k)kapalSet.add(k);});
   const byT=new Map(), byJ=new Map(), byU=new Map(), byM=new Map(), byY=new Map();
   filt.forEach(function(r){
@@ -3701,6 +3739,9 @@ async function renderStatistik(force){
     +kpi(pctNaik+'%','Realisasi Naik','#1565C0')
     +kpi(kapalSet.size,'Kapal','#B45309')
     +'</div>';
+  if(_statScope!=='sesi'){
+    html+='<div style="font-size:9.5px;color:#999;margin:-4px 0 10px">Realisasi historis mengikuti status tersimpan; sesi berjalan dihitung langsung dari log scan dan tersinkron otomatis ke riwayat.</div>';
+  }
   if(_statScope!=='sesi' && byM.size>0){
     const years=Array.from(byY.keys()).sort();
     const y=(_statScope==='semua')?years[years.length-1]:curY;
