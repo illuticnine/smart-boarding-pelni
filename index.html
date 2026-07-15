@@ -650,6 +650,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       <button class="btn btn-primary" id="btn-start" onclick="startCameraScan()">▶ Mulai Scan</button>
       <button class="btn btn-outline" id="btn-stop" onclick="stopCameraScan()" style="display:none">⏹ Stop</button>
       <button class="btn btn-outline" id="btn-torch" onclick="toggleTorch()" style="display:none">🔦 Senter</button>
+      <button class="btn btn-outline" id="btn-rekon" onclick="openRekonsiliasi()" style="display:none;border-color:#B45309;color:#B45309">🧾 Rekonsiliasi Pra-ETD</button>
     </div>
   </div>
 
@@ -1557,6 +1558,66 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 </div>
 
 <!-- MODAL: PILIH KAPAL (untuk F2 login) -->
+<!-- DIALOG: GO-SHOW vs LANJUTAN -->
+<div id="gs-dialog" style="display:none;position:fixed;inset:0;z-index:9997;background:rgba(13,33,55,.55);
+     align-items:center;justify-content:center;padding:18px">
+  <div style="background:#fff;border-radius:14px;max-width:400px;width:100%;padding:18px 18px 16px;box-shadow:0 12px 40px rgba(0,0,0,.3)">
+    <div style="font-size:15px;font-weight:800;color:#0D2137;margin-bottom:4px">Penumpang ini yang mana?</div>
+    <div id="gs-dialog-ticket" style="font-size:10.5px;color:#888;font-family:monospace;margin-bottom:12px"></div>
+    <div style="font-size:12px;color:#555;line-height:1.45;margin-bottom:14px">
+      Pertanyaan kunci: <b>Apakah penumpang membeli tiket di loket pelabuhan INI, hari ini?</b>
+    </div>
+    <button onclick="gsPilihGoShow()"
+      style="width:100%;padding:13px;border:none;border-radius:10px;background:#E65100;color:#fff;
+             font-size:13px;font-weight:800;cursor:pointer;margin-bottom:9px;text-align:left">
+      🎫 YA — beli di loket sini hari ini
+      <div style="font-size:10px;font-weight:500;opacity:.9;margin-top:2px">Catat sebagai <b>Go-Show</b> (penjualan hari-H)</div>
+    </button>
+    <button onclick="gsPilihLanjutan()"
+      style="width:100%;padding:13px;border:none;border-radius:10px;background:#6A1B9A;color:#fff;
+             font-size:13px;font-weight:800;cursor:pointer;margin-bottom:9px;text-align:left">
+      🔄 BUKAN — dari pelabuhan sebelumnya
+      <div style="font-size:10px;font-weight:500;opacity:.9;margin-top:2px">Catat sebagai <b>Penumpang Lanjutan</b> (transit)</div>
+    </button>
+    <button onclick="gsDialogClose()"
+      style="width:100%;padding:10px;border:1px solid var(--gray-300);border-radius:10px;background:#fff;
+             color:var(--gray-600);font-size:12px;cursor:pointer">Batal</button>
+  </div>
+</div>
+
+<!-- MODAL: REKONSILIASI PRA-ETD (F2) -->
+<div class="modal-bg" id="modal-rekon" style="display:none">
+  <div class="modal" style="max-width:520px;width:94vw;max-height:88vh;display:flex;flex-direction:column">
+    <h3 style="margin-bottom:2px">🧾 Rekonsiliasi Pra-Keberangkatan</h3>
+    <p style="font-size:11.5px;color:var(--gray-500);margin-bottom:10px">
+      Penumpang manifes yang <b>belum tercatat naik</b>. Cocokkan dengan headcount Mualim,
+      lalu tetapkan status tiap orang sebelum kapal berangkat. Semua keputusan tercatat (audit).
+    </p>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input id="rekon-cari" oninput="renderRekonList()" placeholder="Cari nama / tiket…"
+        style="flex:1;padding:8px 10px;border:1px solid var(--gray-300);border-radius:8px;font-size:12px">
+      <span id="rekon-count" style="font-size:11px;color:var(--gray-500);align-self:center;white-space:nowrap"></span>
+    </div>
+    <div id="rekon-list" style="flex:1;overflow-y:auto;border:1px solid var(--gray-200);border-radius:8px;padding:4px"></div>
+    <div style="margin-top:10px;padding:10px;background:#FFF3E9;border-radius:8px">
+      <div style="font-size:11px;font-weight:700;color:#B34700;margin-bottom:6px">Tindakan massal untuk sisa penumpang</div>
+      <input id="rekon-alasan" placeholder="Alasan WAJIB (mis. no-show / sudah naik tanpa scan saat aplikasi bermasalah)"
+        style="width:100%;padding:8px 10px;border:1px solid #F0C9A8;border-radius:8px;font-size:11.5px;margin-bottom:8px">
+      <div style="display:flex;gap:8px">
+        <button onclick="rekonMassal('REKONSILIASI')"
+          style="flex:1;padding:10px;border:none;border-radius:8px;background:var(--teal);color:#fff;font-size:11.5px;font-weight:700;cursor:pointer">
+          ✅ Tandai semua NAIK</button>
+        <button onclick="rekonMassal('TERTINGGAL')"
+          style="flex:1;padding:10px;border:none;border-radius:8px;background:#607D8B;color:#fff;font-size:11.5px;font-weight:700;cursor:pointer">
+          🚫 Tandai semua TERTINGGAL</button>
+      </div>
+    </div>
+    <div style="margin-top:10px;display:flex;justify-content:flex-end">
+      <button class="btn btn-gray btn-sm" onclick="closeModal('modal-rekon')">Tutup</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-pilih-kapal" style="display:none">
   <div class="modal">
     <h3>⛵ Pilih Kapal Tugas</h3>
@@ -1599,7 +1660,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 <!-- Modal transit dihapus - diganti scanner langsung -->
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 // ══════════════════════════════════════════
@@ -1616,7 +1677,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 const SUPABASE_URL  = 'https://knmkbqjpcjuhozljdmka.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubWticWpwY2p1aG96bGpkbWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MjU0NDYsImV4cCI6MjA5NzAwMTQ0Nn0.QJ4Ku7iVPCKuaLzPCLqtznwbRxD6bX8PuCG7sSBmQCo';
-const APP_VERSION = 'v2.6.1';
+const APP_VERSION = 'v2.7';
 
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
@@ -1701,7 +1762,7 @@ function loadState(){
     if(s){
       const saved=JSON.parse(s);
       S={...S,...saved};
-      const validStatuses=['OK','NAIK','DUPLIKAT','TRANSIT','PERHATIAN','TIDAK DIKENAL','IZIN_KELUAR','DITAHAN','CEK_SUDAH_NAIK','CEK_LANJUTAN','DIBATALKAN'];
+      const validStatuses=['OK','NAIK','DUPLIKAT','TRANSIT','PERHATIAN','TIDAK DIKENAL','IZIN_KELUAR','DITAHAN','CEK_SUDAH_NAIK','CEK_LANJUTAN','DIBATALKAN','TERTINGGAL','REKONSILIASI','KOREKSI','CEK_LANJUTAN_F2','CEK_NAIK_LANGSUNG'];
       if(S.scanLog && S.scanLog.some(l=>!validStatuses.includes(l.status))){
         S.scanLog=[]; S.dupAlerts=[];
       }
@@ -1879,6 +1940,50 @@ function setScanMode(m){
 let qrScanner = null;
 let _scanStarting = false;
 const SCAN_FPS = 10;              // fps 10 kembali terjangkau: frame 480p (CAM_RES) 4–5× lebih murah — kamera gesit, tetap dingin
+// ── Util keamanan & kamera ──────────────────────────────────
+function esc(v){ return String(v==null?'':v)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function pesanKameraGagal(err){
+  const n=(err&&err.name)||'', m=String((err&&err.message)||err||'');
+  if(n==='NotAllowedError'||/permission|denied/i.test(m))
+    return 'Izin kamera DITOLAK. Buka ikon gembok di address bar \u2192 Izin \u2192 Kamera: Izinkan, lalu coba lagi.';
+  if(n==='NotReadableError'||/in use|could not start/i.test(m))
+    return 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera lain, lalu coba lagi.';
+  if(n==='NotFoundError') return 'Kamera tidak ditemukan pada perangkat ini.';
+  return 'Kamera tidak bisa diakses \u00b7 '+m;
+}
+async function startQrWithFallback(scanner, baseCfg, onDecode){
+  const cam={ facingMode:'environment' };
+  try{
+    await scanner.start(cam, Object.assign({}, baseCfg,
+      { videoConstraints: Object.assign({ facingMode:'environment' }, CAM_RES) }), onDecode, ()=>{});
+    return 'hemat';
+  }catch(e1){
+    await scanner.start(cam, baseCfg, onDecode, ()=>{});
+    console.warn('[CAM] mode kompatibilitas:', e1 && e1.message);
+    return 'kompatibilitas';
+  }
+}
+async function cekModePenyamaran(){
+  try{
+    if(navigator.storage && navigator.storage.estimate){
+      const est=await navigator.storage.estimate();
+      if(est && est.quota && est.quota < 200*1024*1024) return true;
+    }
+  }catch(e){}
+  return false;
+}
+setTimeout(async ()=>{
+  if(await cekModePenyamaran()){
+    const el=document.createElement('div');
+    el.style.cssText='position:fixed;bottom:14px;right:14px;z-index:9998;background:#B45309;color:#fff;'
+      +'font-size:11px;font-weight:700;padding:8px 12px;border-radius:20px;box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:70vw';
+    el.textContent='\u26a0\ufe0f Mode penyamaran terdeteksi \u2014 data offline TIDAK aman. Gunakan Chrome biasa.';
+    document.body.appendChild(el);
+  }
+}, 2000);
+
 const CAM_RES  = { width:{ideal:640}, height:{ideal:480} };  // resolusi preview rendah → dingin & ringan; QR tiket besar & dekat, 480p lebih dari cukup (naikkan ke 720 bila uji malam menuntut)
 let _scanBusy = false;            // true saat processTicket sedang jalan
 let _keputusanPending = false;    // true saat layar keputusan F1 menunggu aksi petugas
@@ -1898,8 +2003,9 @@ async function startCameraScan(){
   document.getElementById('scan-placeholder').style.display='none';
   document.getElementById('qr-reader').style.display='block';
   document.getElementById('btn-start').style.display='none';
-  document.getElementById('btn-stop').style.display='inline-flex';
-  const bt=document.getElementById('btn-torch'); if(bt){ bt.style.display='inline-flex'; bt.textContent='🔦 Senter'; }
+  const _bstop=document.getElementById('btn-stop');
+  _bstop.style.display='inline-flex';
+  _bstop.disabled=true; _bstop.textContent='⏳ Menyiapkan kamera…';
   _torchOn=false;
 
   try{
@@ -1911,7 +2017,7 @@ async function startCameraScan(){
     return;
   }
   let _scanBusy = false;
-  qrScanner.start(Object.assign({facingMode:'environment'}, CAM_RES),{fps:SCAN_FPS,qrbox:{width:230,height:230}},
+  startQrWithFallback(qrScanner,{fps:SCAN_FPS,qrbox:{width:230,height:230}},
     async (txt)=>{
       if(_scanBusy || _keputusanPending) return;  // jangan proses scan baru saat sibuk / menunggu keputusan
       _scanBusy = true;
@@ -1932,10 +2038,17 @@ async function startCameraScan(){
   ).then(()=>{
     _scanStarting = false;
     _idlePaused = false;
+    const b=document.getElementById('btn-stop');
+    if(b){ b.disabled=false; b.textContent='⏹ Stop'; }
+    try{
+      const cap = qrScanner.getRunningTrackCapabilities ? qrScanner.getRunningTrackCapabilities() : null;
+      const bt=document.getElementById('btn-torch');
+      if(bt) bt.style.display = (cap && cap.torch) ? 'inline-flex' : 'none';
+    }catch(e){}
     armIdleTimer();
   }).catch(err=>{
     _scanStarting = false;
-    showToast('Kamera tidak bisa diakses · '+(err.message||''),'error');
+    showToast(pesanKameraGagal(err),'error');
     stopCameraScan();
   });
 }
@@ -1949,7 +2062,8 @@ function stopCameraScan(){
   document.getElementById('scan-placeholder').style.display='flex';
   document.getElementById('qr-reader').style.display='none';
   document.getElementById('btn-start').style.display='inline-flex';
-  document.getElementById('btn-stop').style.display='none';
+  const _bs2=document.getElementById('btn-stop');
+  _bs2.style.display='none'; _bs2.disabled=false; _bs2.textContent='⏹ Stop';
   const bt=document.getElementById('btn-torch'); if(bt) bt.style.display='none';
   _torchOn=false;
 }
@@ -2504,10 +2618,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
         🚨 Tahan
       </button>
     </div>
-    <button onclick="konfirmasiGoShow()"
+    <button onclick="tanyaGoShowVsLanjutan()"
       style="margin-top:8px;width:100%;padding:11px;border:none;border-radius:8px;
-             background:#E65100;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
-      🎫 Go-Show (beli tiket di loket)
+             background:#37474F;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+      🎫 Go-Show / 🔄 Lanjutan — pilih…
     </button>
     <button onclick="batalkanScan()"
       style="margin-top:8px;width:100%;padding:9px;border:1px solid var(--gray-300);
@@ -2566,10 +2680,10 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
         🚨 Tahan
       </button>
     </div>
-    <button onclick="konfirmasiGoShow()"
+    <button onclick="tanyaGoShowVsLanjutan()"
       style="margin-top:8px;width:100%;padding:11px;border:none;border-radius:8px;
-             background:#E65100;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
-      🎫 Go-Show (beli tiket di loket)
+             background:#37474F;color:#fff;font-size:12px;font-weight:700;cursor:pointer">
+      🎫 Go-Show / 🔄 Lanjutan — pilih…
     </button>
     <button onclick="batalkanScan()"
       style="margin-top:8px;width:100%;padding:9px;border:1px solid var(--gray-300);
@@ -2581,8 +2695,8 @@ function showResult(status,name,info,gender,kategori,tujuan,asal,usia){
   box.innerHTML=`
     <div class="r-icon">${icon}</div>
     <div class="r-status" style="color:${col}">${label}</div>
-    <div class="r-name">${name}</div>
-    <div class="r-info">${info}</div>
+    <div class="r-name">${esc(name)}</div>
+    <div class="r-info">${esc(info)}</div>
     ${paxInfo}
     ${extra}
     ${decisionBlock}
@@ -3534,6 +3648,7 @@ async function updateInfografisF2(){
 
   document.getElementById('infog-f1-stats').style.display='none';
   document.getElementById('infog-f2-stats').style.display='grid';
+  { const rb=document.getElementById('btn-rekon'); if(rb) rb.style.display = (S.currentPos==='F2' && belum>0? 'inline-flex':'none'); }
   document.getElementById('infog-title').textContent='⛵ FILTER 2 — PASTIKAN SEMUA NAIK';
 
   const total = S.manifest.length;
@@ -3619,6 +3734,99 @@ async function updateInfografisF2(){
 // ══════════════════════════════════════════════════════════════
 
 // ── SCAN LOG ──────────────────────────────────────────────────
+// ── REKONSILIASI PRA-ETD ──────────────────────────────────────
+// Menutup kasus "tiket menggantung": penumpang manifes yang lolos F1
+// namun tak tercatat di F2 (mis. karena aplikasi sempat bermasalah).
+// Setiap keputusan direkam sebagai entri audit ber-alasan & ber-petugas.
+function _rekonSisa(){
+  const mset=_manifestTicketSet();
+  return S.manifest.filter(function(p){
+    const t=(p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+    if(!t || !mset.has(t)) return false;
+    if(p._status==='naik') return false;
+    if(LIVE.sesi===getSesiId() && LIVE.naik.has(t)) return false;
+    return true;
+  });
+}
+function openRekonsiliasi(){
+  if(S.currentPos!=='F2'){ showToast('Rekonsiliasi hanya di pos Filter 2','error'); return; }
+  const cari=document.getElementById('rekon-cari'); if(cari) cari.value='';
+  const al=document.getElementById('rekon-alasan'); if(al) al.value='';
+  renderRekonList();
+  openModal('modal-rekon');
+}
+function renderRekonList(){
+  const box=document.getElementById('rekon-list'); if(!box) return;
+  const q=(document.getElementById('rekon-cari').value||'').trim().toUpperCase();
+  let sisa=_rekonSisa();
+  if(q) sisa=sisa.filter(function(p){
+    const t=(p.NO_TIKET||p['No Tiket']||'').toString().toUpperCase();
+    return t.indexOf(q)>=0 || getName(p).toUpperCase().indexOf(q)>=0;
+  });
+  document.getElementById('rekon-count').textContent=sisa.length+' penumpang';
+  if(!sisa.length){ box.innerHTML='<div style="text-align:center;color:#999;padding:24px 0;font-size:12px">Tidak ada penumpang tersisa 🎉</div>'; return; }
+  box.innerHTML=sisa.slice(0,300).map(function(p){
+    const t=(p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+    const nm=getName(p), tj=p['Pel. Tujuan']||p.TUJUAN||'';
+    const tj2=t.replace(/[^A-Z0-9._-]/g,'');
+    return '<div style="display:flex;align-items:center;gap:6px;padding:7px 6px;border-bottom:1px solid #F0F3F7">'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nm)+'</div>'
+      +'<div style="font-size:9.5px;color:#888;font-family:monospace">'+esc(t)+(tj?' · '+esc(tj):'')+'</div></div>'
+      +'<button onclick="rekonSatu(\''+tj2+'\',\'REKONSILIASI\')" style="padding:6px 9px;border:none;border-radius:6px;background:var(--teal);color:#fff;font-size:10.5px;font-weight:700;cursor:pointer">Naik</button>'
+      +'<button onclick="rekonSatu(\''+tj2+'\',\'TERTINGGAL\')" style="padding:6px 9px;border:none;border-radius:6px;background:#607D8B;color:#fff;font-size:10.5px;font-weight:700;cursor:pointer">Tertinggal</button>'
+      +'</div>';
+  }).join('');
+}
+function _rekonEntry(pax, ticket, status, alasan){
+  const now=new Date().toLocaleTimeString('id-ID',{hour12:false});
+  const info=(status==='REKONSILIASI'?'REKONSILIASI · naik dikonfirmasi':'TERTINGGAL · tidak berangkat')
+    +(alasan?(' · '+alasan):'');
+  const entry={
+    time:now, ticket:ticket, name:getName(pax)||'—',
+    pos:'F2', status:status, info:info, gender:'', kategori:'',
+    shipType:(pax&&pax._tipeKapal)?pax._tipeKapal:S.shipType,
+    sesiId:S.currentSesiId||getSesiId(),
+    namaKapal:S.ship.name||'', voyage:S.ship.voyage||'', petugas:S.petugas||'',
+  };
+  S.scanLog.unshift(entry);
+  if(S.scanLog.length>500) S.scanLog.pop();
+  if(pax) pax._status=(status==='REKONSILIASI')?'naik':'tertinggal';
+  if(status==='REKONSILIASI'){
+    // Pastikan papan hitung LIVE untuk sesi ini memuat tiket ini,
+    // tanpa bergantung pada kecocokan sesi saat liveApply dipanggil.
+    try{
+      const sid=entry.sesiId;
+      if(LIVE.sesi!==sid){ LIVE.sesi=sid; if(!LIVE.loadedAt) LIVE.loadedAt=Date.now(); }
+      LIVE.naik.add(String(ticket||'').trim().toUpperCase());
+    }catch(e){}
+  }
+  sbAddLog({...entry, _sesiId:entry.sesiId});
+}
+function rekonSatu(ticket, status){
+  const t=String(ticket||'').trim().toUpperCase();
+  const pax=S.manifest.find(function(p){return (p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase()===t;});
+  let alasan=(document.getElementById('rekon-alasan').value||'').trim();
+  if(status==='TERTINGGAL' && !alasan){ alasan='Tidak hadir saat rekonsiliasi'; }
+  _rekonEntry(pax, t, status, alasan);
+  saveState(); renderRekonList(); updateInfografis(); if(typeof updateManifesPage==='function') updateManifesPage();
+  showToast((status==='REKONSILIASI'?'Ditandai NAIK':'Ditandai TERTINGGAL')+': '+t, 'ok');
+}
+function rekonMassal(status){
+  const sisa=_rekonSisa();
+  if(!sisa.length){ showToast('Tidak ada penumpang tersisa','ok'); return; }
+  const alasan=(document.getElementById('rekon-alasan').value||'').trim();
+  if(!alasan){ showToast('Alasan WAJIB diisi untuk tindakan massal','error');
+    const a=document.getElementById('rekon-alasan'); if(a) a.focus(); return; }
+  if(!confirm('Terapkan "'+(status==='REKONSILIASI'?'NAIK':'TERTINGGAL')+'" ke '+sisa.length+' penumpang?\nAlasan: '+alasan)) return;
+  sisa.forEach(function(p){
+    const t=(p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+    _rekonEntry(p, t, status, alasan);
+  });
+  saveState(); renderRekonList(); updateInfografis(); if(typeof updateManifesPage==='function') updateManifesPage();
+  showToast(sisa.length+' penumpang ditandai '+(status==='REKONSILIASI'?'NAIK':'TERTINGGAL'), 'ok');
+}
+
 // ── LIVE SETS: hitungan infografis TANPA fetch per-scan ──────
 // Papan hitung lokal: dimuat penuh sekali per sesi, lalu diperbarui
 // incremental oleh scan sendiri (via sbAddLog) & event realtime
@@ -3761,7 +3969,7 @@ function _stBar(label,val,max,total,color){
   const pct=total>0?Math.round(val/total*100):0;
   return '<div style="margin:6px 0">'
    +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px">'
-   +'<span style="font-weight:600">'+label+'</span>'
+   +'<span style="font-weight:600">'+esc(label)+'</span>'
    +'<span style="color:#666">'+val.toLocaleString('id-ID')+' &middot; '+pct+'%</span></div>'
    +'<div style="background:#EEF2F6;border-radius:6px;height:10px;overflow:hidden">'
    +'<div style="width:'+w+'%;height:100%;background:'+color+';border-radius:6px"></div></div></div>';
@@ -4607,7 +4815,8 @@ function renderLogFromCache(){
   if(!filtered.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
 
-  tbody.innerHTML = filtered.slice(0, LOG_RENDER_CAP).map(l => {
+  const _isAdminLog = (currentRole==='admin');
+  tbody.innerHTML = filtered.slice(0, LOG_RENDER_CAP).map((l, i) => {
     let badge = '';
     if(l.status==='OK')        badge='<span class="badge bg">✅ F1 Lolos</span>';
     else if(l.status==='NAIK') badge='<span class="badge bt">🚢 Naik Kapal</span>';
@@ -4619,12 +4828,24 @@ function renderLogFromCache(){
     else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
     if(l.status==='DIBATALKAN') badge='<span class="badge bgr">↩️ Batal</span>';
-    if(l.info && String(l.info).indexOf('GO-SHOW')===0) badge='<span class="badge ba">🎫 Go-Show</span>';
+    else if(l.status==='TERTINGGAL') badge='<span class="badge bgr">🚫 Tertinggal</span>';
+    else if(l.status==='REKONSILIASI') badge='<span class="badge bt">✅ Naik (rekon)</span>';
+    const _info=String(l.info||'');
+    const _isGoshow=_info.indexOf('GO-SHOW')===0;
+    const _isLanjutan=_info.indexOf('LANJUTAN')===0 || l.status==='CEK_LANJUTAN' || l.status==='CEK_LANJUTAN_F2';
+    if(_isGoshow) badge='<span class="badge ba">🎫 Go-Show</span>';
+    if(_info.indexOf('KOREKSI')===0 || l.status==='KOREKSI') badge='<span class="badge bgr">🔁 Koreksi</span>';
     const pc = `<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
+    let aksi='';
+    if(_isAdminLog && (_isGoshow||_isLanjutan) && _info.indexOf('KOREKSI')!==0){
+      const target=_isGoshow?'LANJUTAN':'GOSHOW';
+      const lbl=_isGoshow?'→ Lanjutan':'→ Go-Show';
+      aksi=`<button onclick="reklasifikasi(${i},'${target}')" title="Reklasifikasi (tercatat sebagai koreksi)" style="padding:4px 7px;border:1px solid var(--gray-300);border-radius:6px;background:#fff;font-size:10px;cursor:pointer;white-space:nowrap;margin-top:3px">🔁 ${lbl}</button>`;
+    }
     return `<tr>
       <td style="font-size:11px;color:var(--gray-400);white-space:nowrap">${l.time}</td>
-      <td style="font-family:monospace;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.ticket}</td>
-      <td style="font-weight:600;font-size:12px">${l.name}</td>
+      <td style="font-family:monospace;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.ticket)}</td>
+      <td style="font-weight:600;font-size:12px">${esc(l.name)}${aksi?'<br>'+aksi:''}</td>
       <td style="font-size:11px;color:var(--gray-600);white-space:nowrap">${l.petugas||'—'}</td>
       <td>${pc}</td><td>${badge}</td>
     </tr>`;
@@ -6030,6 +6251,75 @@ async function refreshGoshowCounts(){
 }
 
 // F1 → lolos (OK); F2 → naik (NAIK). Ditandai 'GO-SHOW' di info untuk rekonsiliasi.
+// ── Reklasifikasi ber-audit (admin): perbaiki salah klik ─────
+// GO-SHOW \u2194 LANJUTAN. Jejak asal tidak dihapus: info entri diperbarui
+// dan satu entri audit 'KOREKSI' ditambahkan (ber-alasan & ber-petugas).
+async function reklasifikasi(idx, target){
+  if(currentRole!=='admin'){ showToast('Hanya admin','error'); return; }
+  const source = _sbLogCache.length ? _sbLogCache : S.scanLog;
+  const l = source[idx];
+  if(!l){ showToast('Entri tidak ditemukan','error'); return; }
+  const dari = String(l.info||'').indexOf('GO-SHOW')===0 ? 'GO-SHOW' : 'LANJUTAN';
+  const ke   = (target==='GOSHOW') ? 'GO-SHOW' : 'LANJUTAN';
+  if(dari===ke){ showToast('Sudah berstatus '+ke,'warning'); return; }
+  const alasan = prompt('Reklasifikasi '+l.ticket+'\n'+dari+' \u2192 '+ke+'\n\nAlasan koreksi (wajib):','salah klik saat boarding');
+  if(alasan===null) return;
+  if(!String(alasan).trim()){ showToast('Alasan wajib diisi','error'); return; }
+  const infoBaru = ke+' \u00b7 hasil koreksi \u00b7 '+String(alasan).trim();
+
+  if(sb){
+    try{
+      let q = sb.from('scan_log').update({ info: infoBaru });
+      if(l.id){ q = q.eq('id', l.id); }
+      else { q = q.eq('sesi_id', l.sesi_id||getSesiId()).eq('no_tiket', l.ticket).eq('waktu', l.time).eq('pos', l.pos); }
+      const { error } = await q;
+      if(error) throw error;
+    }catch(e){ showToast('Gagal memperbarui cloud \u00b7 '+(e.message||''),'error'); return; }
+  }
+
+  l.info = infoBaru;
+  const local = S.scanLog.find(x=>x.ticket===l.ticket && x.time===l.time && x.pos===l.pos);
+  if(local) local.info = infoBaru;
+  if(S.goshowLog){
+    const key=String(l.ticket).trim().toUpperCase();
+    if(ke==='LANJUTAN') S.goshowLog = S.goshowLog.filter(g=>String(g.ticket).trim().toUpperCase()!==key);
+    else if(!S.goshowLog.some(g=>String(g.ticket).trim().toUpperCase()===key))
+      S.goshowLog.unshift({ticket:l.ticket, waktu:l.time, tanggal:new Date().toLocaleDateString('id-ID'), pos:l.pos, naik:(l.status==='NAIK'), petugas:S.petugas||'\u2014'});
+  }
+
+  const now=new Date().toLocaleTimeString('id-ID',{hour12:false});
+  const audit={ time:now, ticket:l.ticket, name:l.name||'\u2014', pos:l.pos, status:'KOREKSI',
+    info:'KOREKSI \u00b7 '+dari+' \u2192 '+ke+' \u00b7 '+String(alasan).trim(),
+    gender:'', kategori:'', shipType:l.shipType||S.shipType,
+    sesiId:l.sesi_id||S.currentSesiId||getSesiId(), namaKapal:S.ship.name||'', voyage:S.ship.voyage||'',
+    petugas:S.petugas||'' };
+  S.scanLog.unshift(audit); if(S.scanLog.length>500) S.scanLog.pop();
+  sbAddLog({...audit, _sesiId:audit.sesiId});
+
+  saveState();
+  try{ refreshGoshowCountsThrottled(); }catch(e){}
+  if(_sbLogCache.length) renderLogFromCache(); else renderLog();
+  updateDashCounters();
+  showToast('Direklasifikasi: '+dari+' \u2192 '+ke,'ok');
+}
+
+// ── Dialog pembeda Go-Show vs Lanjutan (cegah salah klik) ─────
+// Go-Show berimplikasi "penjualan loket hari-H" di laporan pendapatan,
+// sedangkan Lanjutan = penumpang dari pelabuhan sebelumnya. Salah klik
+// mencemari rekonsiliasi, jadi satu pertanyaan pembeda ditanyakan dulu.
+function tanyaGoShowVsLanjutan(){
+  const tk = lastScannedTicket ? esc(lastScannedTicket) : '';
+  const box=document.getElementById('gs-dialog');
+  if(box){
+    const tkEl=document.getElementById('gs-dialog-ticket');
+    if(tkEl) tkEl.textContent = tk ? ('Tiket: '+tk) : '';
+    box.style.display='flex';
+  }
+}
+function gsDialogClose(){ const b=document.getElementById('gs-dialog'); if(b) b.style.display='none'; }
+function gsPilihGoShow(){ gsDialogClose(); konfirmasiGoShow(); }
+function gsPilihLanjutan(){ gsDialogClose(); catatPenumpangLanjutan(); }
+
 function konfirmasiGoShow(ticket){
   ticket = ticket || lastScannedTicket;
   if(!ticket){ showToast('Nomor tiket tidak tersedia','error'); return; }
@@ -6700,13 +6990,13 @@ function startTransitCam(){
   document.getElementById('tr-btn-start').style.display='none';
   document.getElementById('tr-btn-stop').style.display='inline-flex';
   trQrScanner = new Html5Qrcode('tr-qr-reader');
-  trQrScanner.start({facingMode:'environment'},{fps:SCAN_FPS,qrbox:{width:220,height:220}},
+  startQrWithFallback(trQrScanner,{fps:SCAN_FPS,qrbox:{width:220,height:220}},
     (txt)=>{
       processTransitTicket(txt.trim());
       trQrScanner.pause(true);
       setTimeout(()=>{ try{trQrScanner.resume();}catch(e){} },3000);
-    },()=>{}
-  ).catch(err=>{ showToast('Kamera tidak bisa diakses','error'); stopTransitCam(); });
+    }
+  ).catch(err=>{ showToast(pesanKameraGagal(err),'error'); stopTransitCam(); });
 }
 
 function stopTransitCam(){
@@ -6950,12 +7240,16 @@ function renderLog(){
     else if(l.status==='DITAHAN') badge='<span class="badge br">🛑 Ditahan</span>';
     else badge='<span class="badge bgr">❓ Tdk Dikenal</span>';
     if(l.status==='DIBATALKAN') badge='<span class="badge bgr">↩️ Batal</span>';
+    else if(l.status==='TERTINGGAL') badge='<span class="badge bgr">🚫 Tertinggal</span>';
+    else if(l.status==='REKONSILIASI') badge='<span class="badge bt">✅ Naik (rekon)</span>';
+    else if(l.status==='KOREKSI') badge='<span class="badge bgr">🔁 Koreksi</span>';
     if(l.info && String(l.info).indexOf('GO-SHOW')===0) badge='<span class="badge ba">🎫 Go-Show</span>';
+    if(l.info && String(l.info).indexOf('KOREKSI')===0) badge='<span class="badge bgr">🔁 Koreksi</span>';
     const pc=`<span class="chip ${l.pos==='F1'?'cf1':'cf2'}">${l.pos}</span>`;
     return `<tr>
       <td style="font-size:11px;color:var(--gray-400);white-space:nowrap">${l.time}</td>
-      <td style="font-family:monospace;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.ticket}</td>
-      <td style="font-weight:600;font-size:12px">${l.name}</td>
+      <td style="font-family:monospace;font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.ticket)}</td>
+      <td style="font-weight:600;font-size:12px">${esc(l.name)}</td>
       <td style="font-size:11px;color:var(--gray-600);white-space:nowrap">${l.petugas||'—'}</td>
       <td>${pc}</td><td>${badge}</td>
     </tr>`;
