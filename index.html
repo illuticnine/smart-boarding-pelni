@@ -3648,7 +3648,6 @@ async function updateInfografisF2(){
 
   document.getElementById('infog-f1-stats').style.display='none';
   document.getElementById('infog-f2-stats').style.display='grid';
-  { const rb=document.getElementById('btn-rekon'); if(rb) rb.style.display = (S.currentPos==='F2' && belum>0? 'inline-flex':'none'); }
   document.getElementById('infog-title').textContent='⛵ FILTER 2 — PASTIKAN SEMUA NAIK';
 
   const total = S.manifest.length;
@@ -3696,6 +3695,9 @@ async function updateInfografisF2(){
 
   const belumEl = document.getElementById('infog-f2-belum');
   if(belumEl) belumEl.className = 'infog-num ' + (belum > 0 ? 'amber' : 'green');
+  // Tombol Rekonsiliasi: setelah 'belum' F2 benar terhitung (tak bergantung ETD;
+  // muncul selama masih ada penumpang manifes yang belum naik).
+  { const rb=document.getElementById('btn-rekon'); if(rb) rb.style.display = (S.currentPos==='F2' && belum>0 ? 'inline-flex':'none'); }
   const dermEl = document.getElementById('infog-f2-dermaga');
   if(dermEl) dermEl.className = 'infog-num ' + (dermaga > 0 ? 'white' : 'green');
 
