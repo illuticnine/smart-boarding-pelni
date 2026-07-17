@@ -650,7 +650,6 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       <button class="btn btn-primary" id="btn-start" onclick="startCameraScan()">▶ Mulai Scan</button>
       <button class="btn btn-outline" id="btn-stop" onclick="stopCameraScan()" style="display:none">⏹ Stop</button>
       <button class="btn btn-outline" id="btn-torch" onclick="toggleTorch()" style="display:none">🔦 Senter</button>
-      <button class="btn btn-outline" id="btn-rekon" onclick="openRekonsiliasi()" style="display:none;border-color:#B45309;color:#B45309">🧾 Rekonsiliasi Pra-ETD</button>
     </div>
   </div>
 
@@ -3695,9 +3694,7 @@ async function updateInfografisF2(){
 
   const belumEl = document.getElementById('infog-f2-belum');
   if(belumEl) belumEl.className = 'infog-num ' + (belum > 0 ? 'amber' : 'green');
-  // Tombol Rekonsiliasi: setelah 'belum' F2 benar terhitung (tak bergantung ETD;
-  // muncul selama masih ada penumpang manifes yang belum naik).
-  { const rb=document.getElementById('btn-rekon'); if(rb) rb.style.display = (S.currentPos==='F2' && belum>0 ? 'inline-flex':'none'); }
+  // (Rekonsiliasi dipindah ke Dashboard admin — tak lagi di halaman scan F2.)
   const dermEl = document.getElementById('infog-f2-dermaga');
   if(dermEl) dermEl.className = 'infog-num ' + (dermaga > 0 ? 'white' : 'green');
 
@@ -3745,13 +3742,31 @@ function _rekonSisa(){
   return S.manifest.filter(function(p){
     const t=(p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
     if(!t || !mset.has(t)) return false;
-    if(p._status==='naik') return false;
+    if(p._status==='naik' || p._status==='tertinggal') return false;
     if(LIVE.sesi===getSesiId() && LIVE.naik.has(t)) return false;
     return true;
   });
 }
+function _rekonTertinggal(){
+  const mset=_manifestTicketSet();
+  return S.manifest.filter(function(p){
+    const t=(p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+    return t && mset.has(t) && p._status==='tertinggal';
+  });
+}
+async function rekonDariDashboard(sesiId){
+  if(currentRole!=='admin'){ showToast('Hanya admin/supervisor','error'); return; }
+  try{
+    if(S.currentSesiId!==sesiId || !S.manifest.length){
+      await pilihKapalManifes(sesiId);
+    }
+  }catch(e){ console.warn('[REKON] muat sesi:', e.message); }
+  try{ if(typeof ensureLiveSets==='function'){ LIVE.sesi=null; await ensureLiveSets(true); } }catch(e){}
+  openRekonsiliasi();
+}
 function openRekonsiliasi(){
-  if(S.currentPos!=='F2'){ showToast('Rekonsiliasi hanya di pos Filter 2','error'); return; }
+  if(currentRole!=='admin'){ showToast('Rekonsiliasi hanya untuk admin/supervisor','error'); return; }
+  if(!S.manifest || !S.manifest.length){ showToast('Pilih/aktifkan kapal dulu di Dashboard','error'); return; }
   const cari=document.getElementById('rekon-cari'); if(cari) cari.value='';
   const al=document.getElementById('rekon-alasan'); if(al) al.value='';
   renderRekonList();
@@ -3767,7 +3782,7 @@ function renderRekonList(){
   });
   document.getElementById('rekon-count').textContent=sisa.length+' penumpang';
   if(!sisa.length){ box.innerHTML='<div style="text-align:center;color:#999;padding:24px 0;font-size:12px">Tidak ada penumpang tersisa 🎉</div>'; return; }
-  box.innerHTML=sisa.slice(0,300).map(function(p){
+  let html=sisa.slice(0,300).map(function(p){
     const t=(p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
     const nm=getName(p), tj=p['Pel. Tujuan']||p.TUJUAN||'';
     const tj2=t.replace(/[^A-Z0-9._-]/g,'');
@@ -3779,6 +3794,30 @@ function renderRekonList(){
       +'<button onclick="rekonSatu(\''+tj2+'\',\'TERTINGGAL\')" style="padding:6px 9px;border:none;border-radius:6px;background:#607D8B;color:#fff;font-size:10.5px;font-weight:700;cursor:pointer">Tertinggal</button>'
       +'</div>';
   }).join('');
+  if(!q){
+    const tgl=_rekonTertinggal();
+    if(tgl.length){
+      html+='<div style="margin-top:8px;padding:6px 4px 2px;font-size:10px;font-weight:700;color:#607D8B;border-top:1px dashed #E3E8EF">SUDAH DITANDAI TERTINGGAL ('+tgl.length+') — ketuk untuk koreksi</div>';
+      html+=tgl.slice(0,200).map(function(p){
+        const t=(p.NO_TIKET||p['No Tiket']||'').toString().trim().toUpperCase();
+        const nm=getName(p); const tj2=t.replace(/[^A-Z0-9._-]/g,'');
+        return '<div style="display:flex;align-items:center;gap:6px;padding:6px;opacity:.75;border-bottom:1px solid #F0F3F7">'
+          +'<div style="flex:1;min-width:0"><span style="font-size:11.5px">🚫 '+esc(nm)+'</span> '
+          +'<span style="font-size:9px;color:#999;font-family:monospace">'+esc(t)+'</span></div>'
+          +'<button onclick="rekonSatu(\''+tj2+'\',\'REKONSILIASI\')" style="padding:5px 9px;border:1px solid var(--teal);border-radius:6px;background:#fff;color:var(--teal);font-size:10px;font-weight:700;cursor:pointer">↩︎ Jadikan Naik</button>'
+          +'</div>';
+      }).join('');
+    }
+  }
+  box.innerHTML=html;
+}
+async function _rekonUpdateManifes(sesiId, ticket, statusManifes){
+  if(!sb) return;
+  try{
+    const { error } = await sb.from('manifes').update({ status: statusManifes })
+      .eq('sesi_id', sesiId).eq('no_tiket', ticket);
+    if(error) console.warn('[REKON] update manifes gagal:', error.message);
+  }catch(e){ console.warn('[REKON] update manifes error:', e.message); }
 }
 function _rekonEntry(pax, ticket, status, alasan){
   const now=new Date().toLocaleTimeString('id-ID',{hour12:false});
@@ -3793,17 +3832,16 @@ function _rekonEntry(pax, ticket, status, alasan){
   };
   S.scanLog.unshift(entry);
   if(S.scanLog.length>500) S.scanLog.pop();
-  if(pax) pax._status=(status==='REKONSILIASI')?'naik':'tertinggal';
-  if(status==='REKONSILIASI'){
-    // Pastikan papan hitung LIVE untuk sesi ini memuat tiket ini,
-    // tanpa bergantung pada kecocokan sesi saat liveApply dipanggil.
-    try{
-      const sid=entry.sesiId;
-      if(LIVE.sesi!==sid){ LIVE.sesi=sid; if(!LIVE.loadedAt) LIVE.loadedAt=Date.now(); }
-      LIVE.naik.add(String(ticket||'').trim().toUpperCase());
-    }catch(e){}
-  }
+  const finalStatus=(status==='REKONSILIASI')?'naik':'tertinggal';
+  if(pax) pax._status=finalStatus;
+  try{
+    const sid=entry.sesiId;
+    if(LIVE.sesi!==sid){ LIVE.sesi=sid; if(!LIVE.loadedAt) LIVE.loadedAt=Date.now(); }
+    const tup=String(ticket||'').trim().toUpperCase();
+    if(finalStatus==='naik') LIVE.naik.add(tup); else LIVE.naik.delete(tup);
+  }catch(e){}
   sbAddLog({...entry, _sesiId:entry.sesiId});
+  _rekonUpdateManifes(entry.sesiId, ticket, finalStatus);
 }
 function rekonSatu(ticket, status){
   const t=String(ticket||'').trim().toUpperCase();
@@ -4719,35 +4757,31 @@ async function syncStatusFromSupabase(silent = true){
     if(!rows || rows.length === 0) return false;
     _lastSyncTs = rows[rows.length - 1].created_at;   // tandai titik sinkron terakhir
 
-    const statusRank = { 'naik':3, 'dermaga':2, 'perhatian':1 };
-    const bestStatus = {};
-
+    // Model "TERKINI MENANG": untuk tiap tiket, ambil entri dengan
+    // created_at TERBESAR yang berstatus-KEBERADAAN. Status-peristiwa
+    // (KOREKSI/DUPLIKAT/IZIN_KELUAR/DIBATALKAN) DIABAIKAN dari penentuan.
+    const STATUS_KEBERADAAN = {
+      'NAIK':'naik', 'REKONSILIASI':'naik',
+      'OK':'dermaga', 'PERHATIAN':'perhatian', 'TERTINGGAL':'tertinggal'
+    };
+    const latest = {};
     rows.forEach(log => {
       const ticket    = String(log.no_tiket||log['No Tiket']||'').trim();
-      const rawStatus = String(log.status||log['Status']||'').trim();
+      const rawStatus = String(log.status||log['Status']||'').trim().toUpperCase();
       if(!ticket) return;
-
-      const ms = rawStatus==='NAIK'     ? 'naik'
-               : rawStatus==='OK'       ? 'dermaga'
-               : rawStatus==='PERHATIAN'? 'perhatian'
-               : null;
+      const ms = STATUS_KEBERADAAN[rawStatus];
       if(!ms) return;
-
-      const cur = statusRank[bestStatus[ticket]] || 0;
-      const nw  = statusRank[ms] || 0;
-      if(nw > cur) bestStatus[ticket] = ms;
+      const ca = log.created_at || '';
+      const prev = latest[ticket];
+      if(!prev || ca >= prev.ca){ latest[ticket] = { ca:ca, st:ms }; }
     });
 
     let changed = false;
-    Object.entries(bestStatus).forEach(([ticket, newStatus]) => {
+    Object.entries(latest).forEach(([ticket, o]) => {
       const pax = S.manifest.find(p =>
         (p['No Tiket']||p.NO_TIKET||'').toString().trim() === ticket
       );
-      if(pax){
-        const cur = statusRank[pax._status] || 0;
-        const nw  = statusRank[newStatus] || 0;
-        if(nw > cur){ pax._status = newStatus; changed = true; }  // hanya naik tingkat, jangan turunkan
-      }
+      if(pax && pax._status !== o.st){ pax._status = o.st; changed = true; }
     });
 
     if(changed){
@@ -5331,9 +5365,19 @@ async function _renderDashboardMultiKapalInner(container){
   }));
 
   // ── Render card per kapal ──────────────────────────────────
-  container.innerHTML = cards.map(({kapal, f1, naik, naikTambahan, sisa, total, pct, dup, bermasalah, pctColor}) => `
+  container.innerHTML = cards.map(({kapal, f1, naik, naikTambahan, sisa, total, pct, dup, bermasalah, pctColor}) => {
+    const _menit = menitKeETD(kapal.jam_etd);
+    const _perluRekon = (sisa>0) && (_menit==null || _menit<=30);
+    const _rekonBar = _perluRekon ? `
+      <div onclick="rekonDariDashboard('${kapal.sesi_id}')" style="cursor:pointer;background:#B45309;color:#fff;
+           padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-size:12.5px;font-weight:700">🧾 ${sisa} penumpang belum naik${_menit!=null?` · ETD ${fmtETD(_menit)}`:''} — Rekonsiliasi</span>
+        <span style="font-size:11px;background:rgba(255,255,255,.25);padding:4px 9px;border-radius:12px;white-space:nowrap">Buka →</span>
+      </div>` : '';
+    return `
     <div style="border-radius:16px;margin-bottom:12px;overflow:hidden;
                 box-shadow:0 4px 20px rgba(0,0,0,.12)">
+      ${_rekonBar}
 
       <!-- Header kapal -->
       <div style="background:linear-gradient(135deg,#0A2342,#1565C0);
@@ -5412,7 +5456,8 @@ async function _renderDashboardMultiKapalInner(container){
         </div>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   // ── Update counter gabungan ────────────────────────────────
   const totalGab = cards.reduce((s,d)=>s+d.total, 0);
@@ -6764,6 +6809,7 @@ function renderManifestTable(){
       let dc='dgr',sl='Belum';
       if(p._status==='naik'){dc='dg';sl='✅ Naik';}
       else if(p._status==='dermaga'){dc='da';sl='🚶 Dermaga';}
+      else if(p._status==='tertinggal'){dc='dr';sl='🚫 Tertinggal';}
       else if(p._status==='perhatian'){dc='da';sl='⚠️ Perhatian';}
       else if(scan?.status==='DUPLIKAT'){dc='dr';sl='🚨 Duplikat!';}
       const tujuan=(p['Pel. Tujuan']||'').replace(/ \/ \d+$/,'');
@@ -6797,6 +6843,7 @@ function renderManifestTable(){
       let dc='dgr',sl='Belum';
       if(p._status==='naik'){dc='dg';sl='✅ Naik';}
       else if(p._status==='dermaga'){dc='da';sl='🚶 Dermaga';}
+      else if(p._status==='tertinggal'){dc='dr';sl='🚫 Tertinggal';}
       else if(scan?.status==='DUPLIKAT'){dc='dr';sl='🚨 Duplikat!';}
       const kat = p.KATEGORI||p['Kategori']||p['KELAS']||p.KELAS||'—';
       const tujuan = p.TUJUAN||p['Pel. Tujuan']||p['PELABUHAN TUJUAN']||'—';
