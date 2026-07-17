@@ -1112,13 +1112,23 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
         <div id="dash-last-sync" style="font-size:10px;color:#1976D2;margin-top:2px">Belum disinkronkan</div>
         <div id="dash-countdown" style="font-size:10px;color:#42A5F5;margin-top:1px">Auto-refresh dalam 30 detik</div>
       </div>
-      <button onclick="refreshDashboardFromSheets()"
-              id="btn-dash-refresh"
-              style="background:#1565C0;color:#fff;border:none;padding:8px 14px;
-                     border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;
-                     white-space:nowrap;flex-shrink:0">
-        🔄 Refresh
-      </button>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        <button onclick="refreshDashboardFromSheets()"
+                id="btn-dash-refresh"
+                style="background:#1565C0;color:#fff;border:none;padding:8px 14px;
+                       border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;
+                       white-space:nowrap">
+          🔄 Refresh
+        </button>
+        <button onclick="selaraskanStatusManifes()"
+                id="btn-dash-selaraskan"
+                title="Perbaiki kolom status manifes dari riwayat scan (untuk data lama)"
+                style="background:#fff;color:#B45309;border:1px solid #B45309;padding:7px 14px;
+                       border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;
+                       white-space:nowrap">
+          🔧 Selaraskan
+        </button>
+      </div>
     </div>
   </div>
 
@@ -2412,6 +2422,14 @@ async function processTicket(ticketNo){
       pax._status='naik';
     } else if(status==='PERHATIAN'){
       pax._status='perhatian';
+    }
+    // SUMBER TUNGGAL: tulis kolom status ke tabel manifes cloud, agar
+    // dashboard/statistik konsisten dgn manifes tanpa agregasi scan_log.
+    // Hanya untuk status-KEBERADAAN; fire-and-forget (outbox menjaga insert log).
+    const _smap={ 'NAIK':'naik', 'OK':'dermaga', 'PERHATIAN':'perhatian' };
+    if(_smap[status]){
+      const _tk=(pax.NO_TIKET||pax['No Tiket']||ticketNo);
+      _rekonUpdateManifes(paxSesiId||S.currentSesiId||getSesiId(), _tk, _smap[status]);
     }
   }
 
@@ -5300,6 +5318,59 @@ async function _lanjutSesiOtomatis(sesiList){
 
 // Render dashboard multi-kapal
 let _renderDashLock = false;
+// ── Selaraskan kolom status manifes dari scan_log (backfill) ──
+// Untuk data sesi lama yang kolom status-nya belum lengkap. Memakai
+// model TERKINI-MENANG (entri created_at terbesar per tiket) lalu
+// menulis status final ('naik'/'dermaga'/'tertinggal'/'perhatian')
+// ke tabel manifes. Idempoten & aman diulang.
+async function selaraskanStatusManifes(){
+  if(currentRole!=='admin'){ showToast('Hanya admin/supervisor','error'); return; }
+  if(!sb){ showToast('Perlu koneksi cloud untuk menyelaraskan','error'); return; }
+  const kapalArr = (S.kapalAktif && S.kapalAktif.length) ? S.kapalAktif : [];
+  if(!kapalArr.length){ showToast('Tidak ada kapal aktif','error'); return; }
+  const btn=document.getElementById('btn-dash-selaraskan');
+  const _t0 = btn?btn.textContent:''; if(btn){ btn.disabled=true; btn.textContent='⏳ Menyelaraskan…'; }
+  const STATUS_KEBERADAAN={ 'NAIK':'naik','REKONSILIASI':'naik','OK':'dermaga','PERHATIAN':'perhatian','TERTINGGAL':'tertinggal' };
+  let totalUpdate=0;
+  try{
+    for(const kapal of kapalArr){
+      const sesiId=kapal.sesi_id;
+      // 1) semua entri scan_log sesi ini (tiket, status, created_at) — berhalaman
+      const rows=await sbFetchColPaged(()=>sb.from('scan_log')
+        .select('no_tiket,status,created_at').eq('sesi_id',sesiId));
+      // 2) tentukan status TERKINI per tiket (abaikan status-peristiwa)
+      const latest={};
+      rows.forEach(r=>{
+        const t=String(r.no_tiket||'').trim().toUpperCase(); if(!t) return;
+        const st=STATUS_KEBERADAAN[String(r.status||'').trim().toUpperCase()];
+        if(!st) return;
+        const ca=r.created_at||'';
+        if(!latest[t] || ca>=latest[t].ca) latest[t]={ca:ca, st:st};
+      });
+      // 3) kelompokkan tiket per status-target, update massal (in-list per 50)
+      const byStatus={};
+      Object.entries(latest).forEach(([t,o])=>{ (byStatus[o.st]=byStatus[o.st]||[]).push(t); });
+      for(const [st,tickets] of Object.entries(byStatus)){
+        for(let i=0;i<tickets.length;i+=50){
+          const chunk=tickets.slice(i,i+50);
+          const { error }=await sb.from('manifes').update({status:st})
+            .eq('sesi_id',sesiId).in('no_tiket',chunk);
+          if(error){ console.warn('[SELARAS] gagal:',error.message); }
+          else totalUpdate+=chunk.length;
+        }
+      }
+    }
+    showToast('✅ Selaras: '+totalUpdate+' status penumpang diperbarui','ok');
+    // Muat ulang manifes sesi aktif + render dashboard agar langsung tampak
+    try{ if(S.currentSesiId){ const m=await sbGetManifes(); applyManifesToState({manifest:m}); } }catch(e){}
+    renderDashboardMultiKapal();
+  }catch(e){
+    showToast('Gagal menyelaraskan · '+(e.message||''),'error');
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent=_t0||'🔧 Selaraskan'; }
+  }
+}
+
 async function renderDashboardMultiKapal(){
   const container = document.getElementById('dashboard-kapal-list');
   if(!container) return;
@@ -5338,23 +5409,24 @@ async function _renderDashboardMultiKapalInner(container){
       q = apply(q);
       const { count } = await q; return count || 0;
     };
-    const [naikRows, f1Rows, manRows, dup, bermasalah] = await Promise.all([
+    // SUMBER TUNGGAL: baca kolom status tabel manifes (ringan, 1 baris/pnp).
+    // Naik = penumpang manifes berstatus 'naik'. Lanjutan/go-show (di luar
+    // manifes) yang naik dihitung terpisah dari scan_log NAIK.
+    const [manRows, naikLogRows, f1Rows, dup, bermasalah] = await Promise.all([
+      sbFetchColPaged(()=>sb.from('manifes').select('no_tiket,status').eq('sesi_id', kapal.sesi_id)),
       sbFetchColPaged(()=>sb.from('scan_log').select('no_tiket').eq('sesi_id', kapal.sesi_id).eq('status','NAIK')),
-      sbFetchColPaged(()=>sb.from('scan_log').select('no_tiket').eq('sesi_id', kapal.sesi_id).eq('pos','F1').eq('status','OK')),
-      sbFetchColPaged(()=>sb.from('manifes').select('no_tiket').eq('sesi_id', kapal.sesi_id)),
+      sbFetchColPaged(()=>sb.from('scan_log').select('no_tiket').eq('sesi_id', kapal.sesi_id).eq('pos','F1').in('status',['OK','NAIK'])),
       cnt(q=>q.eq('status','DUPLIKAT')),
       cnt(q=>q.in('status', PROBLEM_STATUSES)),
     ]);
     const norm  = t => String(t||'').trim().toUpperCase();
     const mset  = new Set(manRows.map(r=>norm(r.no_tiket)).filter(Boolean));
-    const naikSet = new Set(naikRows.map(r=>norm(r.no_tiket)).filter(Boolean));
-    const f1Set   = new Set(f1Rows.map(r=>norm(r.no_tiket)).filter(Boolean));
-    let naik=0, naikTambahan=0;
-    if(mset.size>0){
-      naikSet.forEach(t=>{ if(mset.has(t)) naik++; else naikTambahan++; });
-    } else {
-      naik = naikSet.size;   // fallback bila tabel manifes kosong utk sesi ini
-    }
+    let naik=0;
+    manRows.forEach(r=>{ if(String(r.status||'')==='naik') naik++; });
+    // Tambahan (lanjutan/go-show) = baris NAIK di scan_log yang TIDAK ada di manifes
+    let naikTambahan=0;
+    new Set(naikLogRows.map(r=>norm(r.no_tiket)).filter(Boolean)).forEach(t=>{ if(!mset.has(t)) naikTambahan++; });
+    const f1Set = new Set(f1Rows.map(r=>norm(r.no_tiket)).filter(Boolean));
     const f1    = f1Set.size;
     const total = kapal.total_manifes || 0;
     const sisa  = Math.max(0, total - naik);   // sisa penumpang MANIFES
