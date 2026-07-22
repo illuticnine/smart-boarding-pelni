@@ -664,7 +664,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
       <div class="hw-hint">Alat scanner akan otomatis mengirim data dan menekan Enter · Klik kotak ini untuk fokus</div>
     </div>
     <div style="display:flex;gap:9px;margin-top:11px">
-      <button class="btn btn-primary" onclick="focusHwInput()">🎯 Fokus Input Scanner</button>
+      <button class="btn btn-primary" onclick="focusHwInput({toast:true,force:true})">🎯 Fokus Input Scanner</button>
       <button class="btn btn-gray btn-sm" onclick="clearHwInput()">🗑 Bersihkan</button>
     </div>
     <div class="info-box teal" style="margin-top:10px">
@@ -1996,6 +1996,23 @@ setTimeout(async ()=>{
 const CAM_RES  = { width:{ideal:640}, height:{ideal:480} };  // resolusi preview rendah → dingin & ringan; QR tiket besar & dekat, 480p lebih dari cukup (naikkan ke 720 bila uji malam menuntut)
 let _scanBusy = false;            // true saat processTicket sedang jalan
 let _keputusanPending = false;    // true saat layar keputusan F1 menunggu aksi petugas
+// FOCUS GUARD (Opsi A): selama halaman scan mode hardware aktif & tak ada
+// dialog keputusan terbuka, jaga agar #hw-input selalu fokus — meniru
+// refleks mesin kasir. Berhenti mengganggu saat dialog terbuka atau saat
+// petugas sedang mengetik di field lain.
+setInterval(function(){
+  try{
+    if(S.scanMode!=='hardware') return;
+    if(!scanPageAktif()) return;
+    if(_keputusanPending) return;                 // dialog terbuka → biarkan tombol fokus
+    const el=document.getElementById('hw-input');
+    if(!el || el.offsetParent===null) return;     // input tak terlihat
+    const act=document.activeElement;
+    // Jangan rebut bila petugas sedang mengetik di input/textarea lain
+    if(act && act!==el && (act.tagName==='INPUT'||act.tagName==='TEXTAREA')) return;
+    if(act!==el) el.focus({preventScroll:true});
+  }catch(e){}
+}, 1200);
 let _keputusanTimer = null;       // pengaman: auto-lepas kunci bila keputusan tak kunjung diambil
 let lastScannedName = '';         // nama hasil scan terakhir (untuk tombol keputusan, tanpa injeksi string)
 async function startCameraScan(){
@@ -2124,9 +2141,41 @@ function resumeFromIdle(){
 // HARDWARE SCANNER
 // ══════════════════════════════════════════
 let hwBuffer = '', hwTimer = null;
-function focusHwInput(){
-  document.getElementById('hw-input').focus();
-  showToast('Scanner siap — arahkan ke QR code','success');
+function focusHwInput(opts){
+  // Fokus tangguh: coba beberapa kali dalam rentang pendek karena di HP
+  // satu panggilan .focus() bisa gagal senyap saat DOM sedang sibuk.
+  const el=document.getElementById('hw-input');
+  if(!el) return;
+  const forced = !!(opts && opts.force);   // tombol manual boleh memaksa
+  const tryFocus=()=>{
+    // Jangan rebut fokus saat dialog keputusan terbuka (kecuali dipaksa),
+    // dan jangan ganggu bila petugas sedang mengetik di input teks lain.
+    if(!forced){
+      if(_keputusanPending) return;
+      const act=document.activeElement;
+      if(act && act!==el && (act.tagName==='INPUT'||act.tagName==='TEXTAREA')) return;
+    }
+    try{ el.focus({preventScroll:true}); }catch(e){ try{el.focus();}catch(_){} }
+  };
+  tryFocus();
+  requestAnimationFrame(tryFocus);
+  setTimeout(tryFocus, 60);
+  setTimeout(tryFocus, 180);
+  // Toast hanya bila diminta eksplisit (tombol manual), agar tak merebut fokus
+  // pada refocus otomatis pasca-dialog.
+  if(opts && opts.toast) showToast('Scanner siap — arahkan ke QR code','success');
+}
+// Kembalikan fokus ke input scanner HANYA jika mode hardware & tak ada
+// dialog keputusan terbuka. Dipakai pasca-tutup dialog (Opsi A).
+function scanPageAktif(){
+  const el=document.getElementById('page-scan');
+  return !!(el && el.classList.contains('active'));
+}
+function refocusScannerJikaPerlu(){
+  if(S.scanMode!=='hardware') return;
+  if(_keputusanPending) return;         // dialog masih terbuka → jangan ganggu
+  if(!scanPageAktif()) return;
+  focusHwInput();
 }
 function clearHwInput(){
   document.getElementById('hw-input').value='';
@@ -2138,6 +2187,10 @@ function hwKeyDown(e){
     const val = document.getElementById('hw-input').value.trim();
     if(val){ processTicket(val); document.getElementById('hw-input').value=''; hwBuffer=''; }
     e.preventDefault();
+    // Scan yang TIDAK memunculkan dialog (hijau/duplikat-toast) tetap
+    // menjaga fokus; yang memunculkan dialog akan di-refocus oleh
+    // tutupHasilScan saat dialog ditutup.
+    requestAnimationFrame(refocusScannerJikaPerlu);
   }
 }
 function hwInput(e){
@@ -6054,6 +6107,11 @@ function tutupHasilScan(){
   _keputusanPending = false;
   clearTimeout(_keputusanTimer);
   try{ if(qrScanner) qrScanner.resume(); }catch(e){}
+  // OPSI A: setelah keputusan selesai & dialog tertutup, scanner OTG siap
+  // lagi TANPA petugas mengklik "Fokus" manual. rAF memastikan refocus
+  // terjadi sesudah dialog benar-benar lepas dari DOM.
+  requestAnimationFrame(()=>{ refocusScannerJikaPerlu(); });
+  setTimeout(refocusScannerJikaPerlu, 120);
   armIdleTimer();   // aktivitas selesai → reset hitung mundur idle
 }
 
