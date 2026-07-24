@@ -19,7 +19,10 @@
   --font:'Segoe UI',system-ui,sans-serif;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--font);background:var(--gray-50);color:var(--gray-800);min-height:100vh}
+body{font-family:var(--font);background:var(--gray-50);color:var(--gray-800);min-height:100vh;
+  /* Cegah tarik-layar (pull-to-refresh) memuat ulang aplikasi tanpa sengaja */
+  overscroll-behavior-y:contain}
+html{overscroll-behavior-y:contain}
 
 /* HEADER */
 .hdr{background:var(--navy);color:#fff;padding:0 16px;position:sticky;top:0;z-index:100;box-shadow:var(--sh2)}
@@ -563,6 +566,9 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 <!-- ═══════════════════ SCAN PAGE ═══════════════════ -->
 <div class="page active" id="page-scan">
+  <!-- Banner sesi aktif: nama kapal + voyage + tanggal ETD -->
+  <div id="sesi-banner" style="display:none;margin:10px 12px 0;padding:9px 12px;border-radius:9px;
+       font-size:11.5px;line-height:1.35"></div>
 
   <!-- INFOGRAFIS PETUGAS -->
   <div id="petugas-infografis">
@@ -1686,7 +1692,7 @@ body.penumpang .nav{background:rgba(0,40,100,.3)}
 
 const SUPABASE_URL  = 'https://knmkbqjpcjuhozljdmka.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubWticWpwY2p1aG96bGpkbWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MjU0NDYsImV4cCI6MjA5NzAwMTQ0Nn0.QJ4Ku7iVPCKuaLzPCLqtznwbRxD6bX8PuCG7sSBmQCo';
-const APP_VERSION = 'v2.7';
+const APP_VERSION = 'v2.8';
 
 // ── PIN LOGIN PER ROLE ──────────────────────────────────────────────────
 const PINS = {
@@ -1870,7 +1876,7 @@ function showPage(id){
   // Hemat baterai: hentikan kamera bila berpindah dari halaman Scan
   if(id!=='scan'){ try{ stopCameraScan(); }catch(e){} }
   if(id==='stat'){ try{ renderStatistik(); }catch(e){} }
-  if(id==='scan'){ try{ ensureLiveSets(false); }catch(e){} }
+  if(id==='scan'){ try{ ensureLiveSets(false); }catch(e){} try{ renderSesiBanner(); }catch(e){} }
   if(id==='scan'||id==='dashboard'||id==='manifest'){ try{ refreshGoshowCounts(); }catch(e){} }
   if(id==='dashboard'){
     updateDashboard();
@@ -3121,8 +3127,30 @@ function resetLoginView(){
   if(btn)     btn.style.display = '';
 }
 
+const AUTH_KEY='smart2_auth';
+const AUTH_TTL_MS=8*60*60*1000;   // 8 jam (batas mutlak, tanpa idle-timeout)
+function simpanAuth(role){
+  try{
+    localStorage.setItem(AUTH_KEY, JSON.stringify({
+      role, petugas:S.petugas||'', petugasId:S.petugasId||null,
+      exp: Date.now()+AUTH_TTL_MS       // PIN TIDAK PERNAH disimpan
+    }));
+  }catch(e){}
+}
+function bacaAuth(){
+  try{
+    const raw=localStorage.getItem(AUTH_KEY); if(!raw) return null;
+    const a=JSON.parse(raw);
+    if(!a || !a.role || !a.exp || Date.now()>a.exp){ localStorage.removeItem(AUTH_KEY); return null; }
+    if(!ROLE_INFO[a.role]){ localStorage.removeItem(AUTH_KEY); return null; }
+    return a;
+  }catch(e){ return null; }
+}
+function hapusAuth(){ try{ localStorage.removeItem(AUTH_KEY); }catch(e){} }
+
 function applyRole(role){
   currentRole = role;
+  simpanAuth(role);          // refresh tak lagi menendang petugas keluar
   const info = ROLE_INFO[role];
 
   // ── BERSIHKAN SISA STATE DARI SESI/ROLE SEBELUMNYA ──────────
@@ -3243,8 +3271,20 @@ function applyRole(role){
       saveState();
 
       setTimeout(()=>{
-        tampilkanPilihKapalF2().then(()=>{
-          setTimeout(startPetugasStatusRefresh, 3000);
+        // Segarkan daftar sesi dari cloud dulu agar pilihan kapal tidak
+        // memuat sesi yang sudah diarsipkan admin.
+        sinkronisasiSesiAktif().then(st=>{
+          if(st==='kosong'){
+            tampilkanManifesKosong('Tidak ada sesi kapal aktif',
+              'Admin belum menambahkan kapal, atau seluruh sesi sudah diselesaikan.<br>Hubungi Admin sebelum memindai.');
+            renderSesiBanner();
+            showToast('🚫 Tidak ada sesi kapal aktif','error');
+            return;
+          }
+          tampilkanPilihKapalF2().then(()=>{
+            renderSesiBanner();
+            setTimeout(startPetugasStatusRefresh, 3000);
+          });
         });
       }, 400);
     } else {
@@ -3282,17 +3322,54 @@ async function autoInitPetugas(){
     }
   }
 
-  showToast('⏳ Memuat manifes...','warning');
+  showToast('⏳ Memeriksa sesi kapal aktif...','warning');
   try{
-    // F1: load semua sesi aktif agar bisa auto-detect kapal saat scan
-    if(currentRole === 'f1'){
-      await refreshKapalAktif();
+    // WAJIB: cocokkan sesi tersimpan dengan cloud sebelum menarik manifes.
+    // Tanpa ini, sesi lama di localStorage membuat manifes sesi kemarin
+    // ikut tertarik (temuan uji lapangan).
+    const st = await sinkronisasiSesiAktif();
+
+    if(st==='kosong'){
+      tampilkanManifesKosong('Tidak ada sesi kapal aktif',
+        'Admin belum menambahkan kapal, atau seluruh sesi sudah diselesaikan.<br>Hubungi Admin sebelum memindai.');
+      renderSesiBanner(); updateManifestSummary(); updateInfografis();
+      showToast('🚫 Tidak ada sesi kapal aktif','error');
+      return;
     }
+    if(st==='offline'){
+      renderSesiBanner();
+      showToast('⚠️ Sesi belum terverifikasi — tidak ada koneksi','warning');
+      return;   // pakai data tersimpan; verifikasi ulang saat sinyal pulih
+    }
+    if(st==='diganti'){
+      showToast('🔄 Sesi lama sudah diarsipkan — disegarkan ke sesi aktif','warning');
+    }
+
     const result = await fetchManifesFromGS();
     applyManifesToState(result);
+    renderSesiBanner();
     showToast('✅ '+result.manifest.length+' penumpang siap di-boarding','success');
   }catch(err){
+    renderSesiBanner();
     showToast('❌ '+err.message,'error');
+  }
+}
+
+// Tampilkan keadaan kosong yang jujur di tab Manifes
+function tampilkanManifesKosong(judul, keterangan){
+  const box=document.getElementById('manifes-empty-box');
+  const sum=document.getElementById('manifest-summary');
+  const tbl=document.getElementById('manifest-table-card');
+  if(sum) sum.style.display='none';
+  if(tbl) tbl.style.display='none';
+  if(box){
+    box.style.display='block';
+    const t=box.querySelector('div[style*="font-weight:700"]');
+    if(t) t.textContent=judul;
+    const d=box.querySelector('div[style*="font-size:12px"]');
+    if(d) d.innerHTML=keterangan;
+    const b=document.getElementById('btn-load-sheets');
+    if(b) b.style.display = (currentRole==='admin') ? '' : 'none';
   }
 }
 
@@ -3302,6 +3379,8 @@ function confirmLogout(){
 }
 
 function logout(){
+  hapusAuth();                 // keluar manual → PIN wajib lagi
+  _sesiTerverifikasi = false;
   stopDashAutoRefresh();       // Hentikan auto-refresh dashboard
   stopManifestAutoRefresh();   // Hentikan auto-refresh manifes
   stopPetugasStatusRefresh();  // Hentikan auto-refresh status petugas
@@ -3936,6 +4015,96 @@ function rekonMassal(status){
   });
   saveState(); renderRekonList(); updateInfografis(); if(typeof updateManifesPage==='function') updateManifesPage();
   showToast(sisa.length+' penumpang ditandai '+(status==='REKONSILIASI'?'NAIK':'TERTINGGAL'), 'ok');
+}
+
+// ── SINKRONISASI SESI AKTIF ───────────────────────────────────
+// Masalah lapangan (uji Kamis): HP petugas memulihkan sesi lama dari
+// localStorage, sehingga tab Manifes menampilkan manifes sesi kemarin
+// walau admin sudah mengarsipkan sesi itu. Sumber kebenaran sesi adalah
+// CLOUD (sesi_kapal berstatus 'aktif'), bukan cache perangkat.
+let _sesiTerverifikasi = false;   // true bila sudah dicocokkan ke cloud pada pembukaan ini
+// Sinyal pulih → verifikasi ulang sesi (menutup kondisi 'offline' yang tertunda)
+window.addEventListener('online', ()=>{
+  if(!currentRole || currentRole==='admin') return;
+  if(_sesiTerverifikasi) return;
+  setTimeout(()=>{ try{ autoInitPetugas(); }catch(e){} }, 1500);
+});
+
+function _bersihkanSesiLokal(){
+  S.currentSesiId = null;
+  S.ship = { name:'', route:'', voyage:'', time:'' };
+  S.manifest = [];
+  _manifestSig = null;
+  try{ localStorage.removeItem('smart2_manifest'); }catch(e){}
+  saveState();
+}
+
+// Kembalikan: 'ok' | 'diganti' | 'kosong' | 'offline'
+async function sinkronisasiSesiAktif(){
+  if(!sb){ _sesiTerverifikasi=false; return 'offline'; }
+  let list;
+  try{
+    list = await refreshKapalAktif();          // hanya status 'aktif'
+  }catch(e){
+    _sesiTerverifikasi=false; return 'offline';
+  }
+  if(!Array.isArray(list)){ _sesiTerverifikasi=false; return 'offline'; }
+  _sesiTerverifikasi = true;
+
+  // Tidak ada sesi aktif sama sekali → kosongkan tampilan, jangan sajikan data lama
+  if(list.length===0){ _bersihkanSesiLokal(); return 'kosong'; }
+
+  const masihAda = S.currentSesiId && list.some(k=>k.sesi_id===S.currentSesiId);
+  if(masihAda) return 'ok';
+
+  // Sesi tersimpan sudah diarsipkan / tidak dikenal → buang state basi
+  const adaSesiLama = !!(S.currentSesiId || S.ship.name);
+  _bersihkanSesiLokal();
+  if(list.length===1){
+    // Tepat satu sesi aktif → pilih otomatis (kurangi ketukan petugas)
+    const k=list[0];
+    S.currentSesiId = k.sesi_id;
+    S.ship = { name:k.nama_kapal, route:k.rute||'', voyage:k.voyage, time:k.jam_etd||'' };
+    S.shipType = k.tipe_kapal || S.shipType;
+    saveState();
+  }
+  return adaSesiLama ? 'diganti' : 'ok';
+}
+
+function _tglHariIni(){
+  const d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function renderSesiBanner(){
+  const el=document.getElementById('sesi-banner'); if(!el) return;
+  if(currentRole==='admin'){ el.style.display='none'; return; }
+  // Belum terverifikasi (offline) → peringatan jujur, tetap boleh bekerja
+  if(!_sesiTerverifikasi){
+    el.style.display='block';
+    el.style.background='#FFF3E9'; el.style.color='#B34700'; el.style.border='1px solid #F0C9A8';
+    el.innerHTML='⚠️ <b>Sesi belum terverifikasi</b> — tidak ada koneksi. Data tetap tersimpan & akan '
+      +'diselaraskan otomatis saat sinyal pulih.';
+    return;
+  }
+  if(!S.currentSesiId || !S.ship.name){
+    el.style.display='block';
+    el.style.background='#FDECEC'; el.style.color='#B3261E'; el.style.border='1px solid #F5C2C0';
+    el.innerHTML='🚫 <b>Tidak ada sesi kapal aktif</b> — hubungi Admin sebelum memindai.';
+    return;
+  }
+  const kapal=(S.kapalAktif||[]).find(k=>k.sesi_id===S.currentSesiId) || {};
+  const etd=String(kapal.tgl_etd||'').slice(0,10);
+  const bukanHariIni = etd && etd!==_tglHariIni();
+  el.style.display='block';
+  if(bukanHariIni){
+    el.style.background='#FDECEC'; el.style.color='#B3261E'; el.style.border='1px solid #F5C2C0';
+    el.innerHTML='⛔ <b>'+esc(S.ship.name)+'</b> · Voy '+esc(S.ship.voyage||'-')
+      +' · ETD '+esc(etd)+' — <b>SESI INI BUKAN UNTUK HARI INI</b>. Konfirmasi ke Admin.';
+  } else {
+    el.style.background='#EAF6EF'; el.style.color='#1B7F4D'; el.style.border='1px solid #BFE3CD';
+    el.innerHTML='🚢 Sesi aktif: <b>'+esc(S.ship.name)+'</b> · Voy '+esc(S.ship.voyage||'-')
+      +(etd?(' · ETD '+esc(etd)):'')+(kapal.jam_etd?(' '+esc(kapal.jam_etd)):'');
+  }
 }
 
 // ── LIVE SETS: hitungan infografis TANPA fetch per-scan ──────
@@ -7657,9 +7826,20 @@ if(sbOk){
   });
 }
 
-// Tampilkan login screen (selalu minta login saat buka app)
+// Pulihkan sesi login bila masih berlaku (< 8 jam) — agar tarik-layar /
+// tab dibuang browser tidak memaksa PIN ulang di tengah antrean.
+// CATATAN: validasi sesi kapal TETAP berjalan lewat applyRole → autoInitPetugas,
+// jadi pemulihan login tidak pernah melewatkan pengecekan sesi ke cloud.
+const _auth = bacaAuth();
 const ls = document.getElementById('login-screen');
-if(ls) ls.style.display='flex';
+if(_auth){
+  if(ls) ls.style.display='none';
+  if(_auth.petugas) S.petugas = _auth.petugas;
+  if(_auth.petugasId) S.petugasId = _auth.petugasId;
+  setTimeout(()=>{ try{ applyRole(_auth.role); }catch(e){ if(ls) ls.style.display='flex'; } }, 60);
+} else {
+  if(ls) ls.style.display='flex';
+}
 } // end initApp
 
 // Jalankan saat DOM siap — penting untuk Android Chrome
